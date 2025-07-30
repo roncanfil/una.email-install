@@ -1,0 +1,45 @@
+# See /usr/share/postfix/main.cf.dist for a commented, full version
+
+# General settings
+myhostname = mail.${DOMAIN}
+mydomain = ${DOMAIN}
+myorigin = ${DOMAIN}
+inet_interfaces = all
+inet_protocols = ipv4
+compatibility_level = 2
+
+# The 'una-email-handler' service is defined in master.cf
+# This tells Postfix to send all mail to our Node.js script.
+transport_maps = hash:/etc/postfix/transport
+virtual_alias_maps = hash:/etc/postfix/virtual
+
+# Standard mailbox settings
+home_mailbox = Maildir/
+mailbox_size_limit = 0
+recipient_delimiter = +
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
+
+# Security settings
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+# TLS parameters (commented out for now, can be enabled later)
+# smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+# smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+# smtpd_use_tls=yes
+# smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+# smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+
+# Relay and network settings
+mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128
+smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated permit_auth_destination defer_unauth_destination
+relayhost = 
+virtual_mailbox_domains = 
+local_transport = 
+mydestination = 
+local_recipient_maps = 
+debug_peer_list = 127.0.0.1
+debug_peer_level = 3 
