@@ -9,8 +9,8 @@ This repository contains everything you need to deploy Una.Email on your own ser
 git clone https://github.com/roncanfil/una.email-install.git
 cd una.email-install
 
-# 2. Run the configuration script
-./generate_config.sh
+# 2. Run the installation script
+./install.sh
 
 # 3. Enter your domain when prompted
 # Example: mydomain.com
@@ -21,7 +21,7 @@ docker compose up -d
 
 ## What This Does
 
-The `generate_config.sh` script will:
+The `install.sh` script will:
 - ✅ Ask for your domain name
 - ✅ Generate Postfix configuration files
 - ✅ Create a `.env` file with your settings
@@ -44,16 +44,6 @@ yourdomain.com         MX   10 mail.yourdomain.com
 - **Web Interface**: `http://YOUR_SERVER_IP`
 - **Test Email**: Send to `any@yourdomain.com`
 
-## License Generation (Optional)
-
-For development or testing:
-
-```bash
-cd scripts/generate-license
-node generate-license.js admin@yourdomain.com yourdomain.com 2025-12-31
-cp LICENSE.key ../
-```
-
 ## Troubleshooting
 
 ```bash
@@ -65,15 +55,4 @@ docker compose logs -f
 
 # Restart services
 docker compose restart
-```
-
-## Architecture
-
-Una.Email consists of:
-- **Postfix**: Mail server with custom handler
-- **Next.js**: Web interface for email management
-- **PostgreSQL**: Database for emails and aliases
-
-## Support
-
-For issues and questions, visit the main repository: https://github.com/roncanfil/una.email 
+``` 

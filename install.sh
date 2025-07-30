@@ -1,12 +1,11 @@
 #!/bin/bash
 
 # UNA.Email Configuration Generator
-# Similar to Mailcow's generate_config.sh but simplified for una.email
 
 set -e
 
-echo "=== UNA.Email Configuration Generator ==="
-echo "This script will configure una.email for your domain"
+echo "=== UNA.Email Installation ==="
+echo "This script will install and configure una.email for your domain"
 echo ""
 
 # Function to validate domain format
@@ -96,8 +95,8 @@ echo "   MX record: $DOMAIN → 10 mail.$DOMAIN"
 echo ""
 echo "🚀 Next steps:"
 echo "   1. Configure your DNS records (see above)"
-echo "   2. Run: ./install.sh"
-echo "   3. Access web interface at: http://localhost:3000"
+echo "   2. Run: docker compose up -d"
+echo "   3. Access web interface at: http://YOUR_SERVER_IP"
 echo ""
 echo "📧 Test email: Send to any@$DOMAIN"
 echo ""
