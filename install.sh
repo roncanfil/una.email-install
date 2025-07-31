@@ -93,6 +93,23 @@ if [ -f mail/entrypoint.sh ]; then
 fi
 
 echo ""
+echo "=== Starting Services and Running Migrations ==="
+echo ""
+
+# Start services in background
+echo "🚀 Starting Docker services..."
+docker compose up -d
+
+# Wait for database to be ready
+echo "⏳ Waiting for database to be ready..."
+sleep 10
+
+# Run database migrations
+echo "🗄️ Running database migrations..."
+docker compose exec -T web npx prisma migrate deploy
+
+echo "✅ Database migrations completed"
+echo ""
 echo "=== Configuration Complete ==="
 echo ""
 echo "📋 DNS Configuration Required:"
@@ -101,8 +118,7 @@ echo "   MX record: $DOMAIN → 10 mail.$DOMAIN"
 echo ""
 echo "🚀 Next steps:"
 echo "   1. Configure your DNS records (see above)"
-echo "   2. Run: docker compose up -d"
-echo "   3. Access web interface at: http://YOUR_SERVER_IP"
+echo "   2. Access web interface at: http://YOUR_SERVER_IP"
 echo ""
 echo "📧 Test email: Send to any@$DOMAIN"
 echo ""
