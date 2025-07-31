@@ -86,6 +86,12 @@ echo "✅ Generated mail/transport"
 sed "s/\${DOMAIN}/$DOMAIN/g" mail/virtual.template > mail/virtual
 echo "✅ Generated mail/virtual"
 
+# Set permissions for entrypoint script
+if [ -f mail/entrypoint.sh ]; then
+    chmod +x mail/entrypoint.sh
+    echo "✅ Set permissions for mail/entrypoint.sh"
+fi
+
 echo ""
 echo "=== Configuration Complete ==="
 echo ""
