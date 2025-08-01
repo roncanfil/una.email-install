@@ -44,6 +44,7 @@ services:
   certbot:
     image: certbot/certbot:latest
     container_name: una-certbot
+    network_mode: "host"
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./letsencrypt/log:/var/log/letsencrypt
