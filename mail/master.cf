@@ -26,6 +26,9 @@ lmtp      unix  -       -       -       -       -       lmtp
 anvil     unix  -       -       -       -       1       anvil
 scache    unix  -       -       -       -       1       scache
 
+# This service is required for the maillog_file setting to work
+postlog   unix-dgram n  -       n       -       1       postlogd
+
 # ====================================================================
 # Custom transport for UNA email handler
 # ====================================================================
