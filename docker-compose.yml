@@ -47,6 +47,7 @@ services:
     container_name: una-nginx
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template
+      - ./nginx/entrypoint.sh:/entrypoint.sh
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./web-root:/var/www/certbot
     ports:
@@ -54,19 +55,19 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN}
-    command: /bin/bash -c "envsubst '$${DOMAIN}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
+    command: ["/bin/bash", "-c", "chmod +x /entrypoint.sh && /entrypoint.sh"]
     depends_on:
       - web
     restart: unless-stopped
 
-  # Certbot for obtaining Let's Encrypt SSL certificates
+  # Certbot is now only used for renewal, not initial creation.
   certbot:
     image: certbot/certbot:latest
     container_name: una-certbot
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./web-root:/var/www/certbot
-    # The command is run manually via the instructions in the README.
 
   # Next.js Web Application
   web:
