@@ -36,7 +36,19 @@ services:
       - ./mail/entrypoint.sh:/app/entrypoint.sh
     ports:
       - "25:25"
+    depends_on:
+      - postgres
     restart: unless-stopped
+
+  # Certbot for obtaining Let's Encrypt SSL certificates
+  certbot:
+    image: certbot/certbot:latest
+    container_name: una-certbot
+    volumes:
+      - ./letsencrypt/etc:/etc/letsencrypt
+      - ./letsencrypt/log:/var/log/letsencrypt
+      - ./web-root:/var/www/html
+    command: certonly --webroot --webroot-path=/var/www/html --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email --force-renewal -d mail.${DOMAIN}
 
   # Next.js Web Application
   web:
@@ -49,6 +61,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
     volumes:
       - ./.env:/app/.env:ro
+      - ./web-root:/app/public/.well-known/acme-challenge
     ports:
       - "80:3000"
     depends_on:

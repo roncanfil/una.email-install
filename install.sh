@@ -27,6 +27,9 @@ if ! validate_domain "$DOMAIN"; then
     exit 1
 fi
 
+# Get email from user for Let's Encrypt
+read -p "Enter your email address (for Let's Encrypt SSL certificate): " LETSENCRYPT_EMAIL
+
 echo ""
 echo "✅ Domain validated: $DOMAIN"
 echo ""
@@ -37,6 +40,7 @@ if [ ! -f .env ]; then
     cat > .env << EOF
 # UNA.Email Configuration
 DOMAIN=$DOMAIN
+LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL
 DB_PASSWORD=una_email_password
 NODE_ENV=production
 IMAGE_TAG=latest
@@ -54,6 +58,16 @@ else
         fi
     else
         echo "DOMAIN=$DOMAIN" >> .env
+    fi
+    # Update LETSENCRYPT_EMAIL in existing .env file
+    if grep -q "^LETSENCRYPT_EMAIL=" .env; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL/" .env
+        else
+            sed -i "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL/" .env
+        fi
+    else
+        echo "LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL" >> .env
     fi
     echo "✅ Updated .env file"
 fi
