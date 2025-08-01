@@ -30,4 +30,4 @@ scache    unix  -       -       -       -       1       scache
 # Custom transport for UNA email handler
 # ====================================================================
 una-email-handler    unix  -       n       n       -       -       pipe
-  flags=Xhq user=root argv=/bin/bash /app/test-transport.sh ${sender} ${recipient} 
+  flags=Xhq user=root argv=/usr/bin/node /app/handler.js ${sender} ${recipient} 
