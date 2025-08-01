@@ -16,10 +16,9 @@ echo "Attempting to renew SSL certificate..."
 docker compose run --rm certbot renew
 
 # Step 2: Reload the Nginx configuration.
-# This command tells Nginx to gracefully reload its configuration, which
-# will pick up the new SSL certificate if it was successfully renewed.
-# This does not cause any downtime.
-echo "Reloading Nginx configuration..."
-docker compose exec nginx nginx -s reload
+# We restart the nginx container, which will cause it to reload the configuration
+# and pick up the renewed SSL certificate.
+echo "Restarting Nginx to apply new certificate..."
+docker compose restart nginx
 
 echo "SSL renewal process complete." 
