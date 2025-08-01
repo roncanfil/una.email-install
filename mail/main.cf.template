@@ -44,6 +44,9 @@ local_recipient_maps = hash:/etc/postfix/virtual
 debug_peer_list = 127.0.0.1
 debug_peer_level = 3
 
+# Force logging to stdout for Docker
+maillog_file = /dev/stdout
+
 # SMTP server settings for incoming connections
 smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
 smtpd_client_restrictions = permit_mynetworks
