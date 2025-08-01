@@ -34,7 +34,7 @@ services:
       - ./mail/transport:/etc/postfix/transport
       - ./mail/virtual:/etc/postfix/virtual
       - ./mail/entrypoint.sh:/app/entrypoint.sh
-      - ./letsencrypt/etc:/etc/letsencrypt # Share certs with Postfix
+      - ./letsencrypt/etc:/etc/letsencrypt
     ports:
       - "25:25"
     depends_on:
@@ -55,7 +55,6 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN}
-      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
     command: ["/bin/bash", "-c", "chmod +x /entrypoint.sh && /entrypoint.sh"]
     depends_on:
       - web

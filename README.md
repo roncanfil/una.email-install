@@ -93,24 +93,26 @@ cd una.email-install
 
 ---
 
-## Step 4: Initial Launch & Obtain SSL Certificate
+## Step 4: Launch and Secure the Application
 
-We will now launch the services. The first time, Nginx will fail to start because the SSL certificate does not exist yet. This is expected. We will then create the certificate, and Nginx will start correctly.
+This is a two-step process. We first launch the services (Nginx will start with a temporary, self-signed certificate), and then we run Certbot to obtain a real SSL certificate.
 
 ```bash
-# 1. Create a dummy directory for Certbot. This is required by Nginx to start.
-mkdir -p una.email-install/letsencrypt/live
-
-# 2. Launch all services. Nginx will start and listen on port 80.
+# Step 4a: Launch all services.
+# Nginx will start up using a temporary "dummy" certificate.
+# Your browser will show a security warning at this stage - this is expected.
 docker compose up -d
 
-# 3. Run the Certbot command to obtain the certificate.
-# Nginx will serve the challenge file, allowing Let's Encrypt to validate your domain.
+# Step 4b: Obtain the real SSL certificate.
+# This command runs the certbot container, which will replace the dummy
+# certificate with a valid one from Let's Encrypt.
 docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email -d mail.${DOMAIN}
 
-# 4. Restart Nginx to load the newly created SSL certificate.
+# Step 4c: Restart Nginx to load the real certificate.
 docker compose restart nginx
 ```
+
+Your application is now live and secure.
 
 ---
 
@@ -131,9 +133,7 @@ Your email server is now live and ready to receive email.
 
 ## Step 6: Configure Automatic SSL Renewal
 
-Your SSL certificate expires every 90 days. We provide a script to automate renewal, which you should run periodically via a cron job.
-
-The `renew-ssl.sh` script included in this repository will automatically run the `certbot renew` command, which will update the certificate if it's nearing expiration. Nginx will automatically pick up the renewed certificate.
+The `renew-ssl.sh` script included in this repository will automatically renew your certificate and restart Nginx.
 
 **Note on Renewals:** The `certbot renew` command is intelligent. It will check your certificate's expiration date and will **only** attempt a renewal if the certificate is within 30 days of expiring. The cron job runs daily to ensure that when the time comes, it will reliably renew.
 
@@ -155,7 +155,9 @@ To set up the automation:
 ## Usage & Troubleshooting
 
 -   **Web Interface**: Access via `https://mail.yourdomain.com`
+-   **Check Startup/SSL Logs**: `docker compose logs nginx`
 -   **Test Email**: Send an email from an external account (like Gmail) to any address at your domain (e.g., `hello@yourdomain.com`).
 
 **Troubleshooting Commands:**
+```
 ```
