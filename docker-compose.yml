@@ -47,8 +47,7 @@ services:
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./letsencrypt/log:/var/log/letsencrypt
-      - ./web-root:/var/www/html
-    command: certonly --webroot --webroot-path=/var/www/html --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email --force-renewal -d mail.${DOMAIN}
+    command: certonly --standalone --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email --preferred-challenges http -d mail.${DOMAIN}
 
   # Next.js Web Application
   web:
@@ -61,7 +60,6 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
     volumes:
       - ./.env:/app/.env:ro
-      - ./web-root/.well-known:/app/public/.well-known
     ports:
       - "80:3000"
     depends_on:
