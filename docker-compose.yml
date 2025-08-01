@@ -34,21 +34,36 @@ services:
       - ./mail/transport:/etc/postfix/transport
       - ./mail/virtual:/etc/postfix/virtual
       - ./mail/entrypoint.sh:/app/entrypoint.sh
+      - ./letsencrypt/etc:/etc/letsencrypt # Share certs with Postfix
     ports:
       - "25:25"
     depends_on:
       - postgres
     restart: unless-stopped
 
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:latest
+    container_name: una-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./letsencrypt/etc:/etc/letsencrypt
+      - ./web-root:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    restart: unless-stopped
+
   # Certbot for obtaining Let's Encrypt SSL certificates
   certbot:
     image: certbot/certbot:latest
     container_name: una-certbot
-    network_mode: "host"
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
-      - ./letsencrypt/log:/var/log/letsencrypt
-    command: certonly --standalone --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email --preferred-challenges http -d mail.${DOMAIN}
+      - ./web-root:/var/www/certbot
+    # The command is run manually via the instructions in the README.
 
   # Next.js Web Application
   web:
@@ -61,8 +76,6 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
     volumes:
       - ./.env:/app/.env:ro
-    ports:
-      - "80:3000"
     depends_on:
       - postgres
     restart: unless-stopped

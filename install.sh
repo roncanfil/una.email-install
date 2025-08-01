@@ -106,34 +106,19 @@ if [ -f mail/entrypoint.sh ]; then
     echo "✅ Set permissions for mail/entrypoint.sh"
 fi
 
-echo ""
-echo "=== Starting Services and Running Migrations ==="
-echo ""
+# Set permissions for SSL renewal script
+if [ -f renew-ssl.sh ]; then
+    chmod +x renew-ssl.sh
+    echo "✅ Set permissions for renew-ssl.sh"
+fi
 
-# Start services in background
-echo "🚀 Starting Docker services..."
-docker compose up -d
-
-# Wait for database to be ready
-echo "⏳ Waiting for database to be ready..."
-sleep 10
-
-# Run database migrations
-echo "🗄️ Running database migrations..."
-docker compose exec -T web npx prisma migrate deploy
-
-echo "✅ Database migrations completed"
 echo ""
 echo "=== Configuration Complete ==="
 echo ""
 echo "📋 DNS Configuration Required:"
-echo "   A record: mail.$DOMAIN → YOUR_SERVER_IP"
-echo "   MX record: $DOMAIN → 10 mail.$DOMAIN"
+echo "   Please see the README.md for the full list of required DNS records."
 echo ""
 echo "🚀 Next steps:"
-echo "   1. Configure your DNS records (see above)"
-echo "   2. Access web interface at: http://YOUR_SERVER_IP"
-echo ""
-echo "📧 Test email: Send to any@$DOMAIN"
+echo "   Follow the deployment instructions in Step 4 of the README.md to launch the services."
 echo ""
 echo "✅ UNA.Email is now configured for domain: $DOMAIN" 
