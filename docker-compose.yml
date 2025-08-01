@@ -30,6 +30,7 @@ services:
       SKIP_CONFIG: "true"
     volumes:
       - ./mail/main.cf:/etc/postfix/main.cf
+      - ./mail/master.cf:/etc/postfix/master.cf
       - ./mail/transport:/etc/postfix/transport
       - ./mail/virtual:/etc/postfix/virtual
       - ./mail/entrypoint.sh:/app/entrypoint.sh
