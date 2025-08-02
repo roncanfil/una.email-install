@@ -33,4 +33,4 @@ postlog   unix-dgram n  -       n       -       1       postlogd
 # Custom transport for UNA email handler
 # ====================================================================
 una-email-handler    unix  -       n       n       -       -       pipe
-  flags=Xhq user=root argv=/usr/local/bin/node /app/handler.js ${sender} ${recipient} 
+  flags=XhqR user=root argv=/usr/local/bin/node /app/handler.js ${sender} ${recipient} 
