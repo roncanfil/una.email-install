@@ -1,7 +1,6 @@
 version: "3.8"
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: una-postgres
@@ -17,7 +16,6 @@ services:
     networks:
       - una-network
 
-  # Postfix Mail Server with Node.js handler
   postfix:
     image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/mail:${IMAGE_TAG:-latest}
     container_name: una-postfix
@@ -45,7 +43,6 @@ services:
     networks:
       - una-network
 
-  # Nginx Reverse Proxy
   nginx:
     image: nginx:latest
     container_name: una-nginx
@@ -66,7 +63,6 @@ services:
     networks:
       - una-network
 
-  # Certbot is now only used for renewal, not initial creation.
   certbot:
     image: certbot/certbot:latest
     container_name: una-certbot
@@ -76,7 +72,6 @@ services:
     networks:
       - una-network
 
-  # Next.js Web Application
   web:
     image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/web:${IMAGE_TAG:-latest}
     container_name: una-web
