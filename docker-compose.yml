@@ -14,6 +14,8 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    networks:
+      - una-network
 
   # Postfix Mail Server with Node.js handler
   postfix:
@@ -40,6 +42,8 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+    networks:
+      - una-network
 
   # Nginx Reverse Proxy
   nginx:
@@ -59,6 +63,8 @@ services:
     depends_on:
       - web
     restart: unless-stopped
+    networks:
+      - una-network
 
   # Certbot is now only used for renewal, not initial creation.
   certbot:
@@ -67,6 +73,8 @@ services:
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./web-root:/var/www/certbot
+    networks:
+      - una-network
 
   # Next.js Web Application
   web:
@@ -82,6 +90,12 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+    networks:
+      - una-network
 
 volumes:
   postgres_data:
+
+networks:
+  una-network:
+    driver: bridge

@@ -106,7 +106,8 @@ docker compose up -d
 # Step 4b: Obtain the real SSL certificate.
 # This command runs the certbot container, which will replace the dummy
 # certificate with a valid one from Let's Encrypt.
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email -d mail.${DOMAIN}
+# IMPORTANT: Replace your_email@example.com and mail.yourdomain.com with your actual values.
+docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email your_email@example.com --agree-tos --no-eff-email -d mail.yourdomain.com
 
 # Step 4c: Restart Nginx to load the real certificate.
 docker compose restart nginx
