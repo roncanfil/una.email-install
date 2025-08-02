@@ -7,7 +7,6 @@ server {
     server_name mail.${DOMAIN};
 
     # This location block is critical for Let's Encrypt's renewal process.
-    # It tells Nginx to serve the challenge files from a specific directory.
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
@@ -25,7 +24,6 @@ server {
     server_name mail.${DOMAIN};
 
     # SSL Certificate Configuration
-    # These lines point Nginx to the Let's Encrypt certificates we obtained.
     ssl_certificate /etc/letsencrypt/live/mail.${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/mail.${DOMAIN}/privkey.pem;
 
@@ -43,4 +41,4 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-} 
+}
