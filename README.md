@@ -33,7 +33,7 @@ Your mail server needs a hostname. The standard is `mail.yourdomain.com`.
 
 Email servers check the Reverse DNS (rDNS) to verify the sender's identity. This is critical for not being marked as spam.
 
-1.  Go to your **cloud provider's control panel** (Vultr, AWS, etc.).
+1.  Go to your **cloud provider's control panel**.
 2.  Find the network settings for your server's IP address (`YOUR_SERVER_IP`).
 3.  Set the **Reverse DNS** (it may be called a `PTR` record) to the hostname you just created: `mail.yourdomain.com`
 
@@ -43,16 +43,20 @@ Email servers check the Reverse DNS (rDNS) to verify the sender's identity. This
 
 1.  Open a support ticket with your cloud provider.
 2.  Politely request that they **"remove the SMTP block on port 25"** for your server. Explain that you are setting up a personal/business email server.
-3.  **Important:** Some providers, like Vultr, require you to perform a full **Stop/Start cycle** from their web panel after the block is removed. A command-line `reboot` is not sufficient.
+3.  **Important:** Some providers require you to perform a full **Stop/Start cycle** from their web panel after the block is removed. A command-line `reboot` is not sufficient.
 
 ---
 
 ## Step 2: Server Firewall Configuration
 
-Your server's own firewall must be configured to allow mail and web traffic.
+Your server's firewall must be configured to allow the required ports for email and web traffic:
 
-1.  Connect to your server via SSH.
-2.  Open ports `22` (SSH), `25` (SMTP), and `80` (HTTP for SSL certificate validation).
+- **22/tcp** (SSH)
+- **25/tcp** (SMTP/Email)
+- **80/tcp** (HTTP)
+- **443/tcp** (HTTPS)
+
+Connect to your server via SSH and configure the firewall:
 
 **On CentOS / AlmaLinux / RHEL (using `firewalld`):**
 ```bash
@@ -72,24 +76,37 @@ sudo ufw allow 443/tcp
 sudo ufw enable
 ```
 
+### Important Note: Multiple Firewall Layers
+
+**Just so you know:** Depending on your hosting provider, you may have multiple firewall layers to configure. Many cloud providers have their own network-level firewalls in addition to your server's local firewall.
+
+If you're experiencing connectivity issues after configuring your server's firewall:
+- Check your cloud provider's control panel for additional firewall/security group settings
+- Look for "Network Security," "Firewalls," or "Security Groups" in your provider's interface
+- Ensure the same ports (22, 25, 80, 443) are allowed at the network level
+
+Both firewall layers must allow traffic for connections to succeed.
+
 ---
 
 ## Step 3: Installation
 
 Now, with the environment prepared, we can install the Una.Email software.
 
+1. Clone this repository:
 ```bash
-# 1. Clone this repository
 git clone https://github.com/roncanfil/una.email-install.git
 cd una.email-install
-
-# 2. Run the interactive installation script
-./install.sh
-
-# 3. Follow the prompts
-#    - Enter your domain name (e.g., yourdomain.com)
-#    - Enter your email address (for SSL certificate notifications)
 ```
+
+2. Run the interactive installation script:
+```bash
+./install.sh
+```
+
+3. Follow the prompts:
+   - Enter your domain name (e.g., yourdomain.com)
+   - Enter your email address (for SSL certificate notifications)
 
 ---
 
@@ -97,19 +114,18 @@ cd una.email-install
 
 This is a two-step process. We first launch the services (Nginx will start with a temporary, self-signed certificate), and then we run Certbot to obtain a real SSL certificate.
 
+**Step 4a:** Launch all services (Nginx will start with a temporary certificate):
 ```bash
-# Step 4a: Launch all services.
-# Nginx will start up using a temporary "dummy" certificate.
-# Your browser will show a security warning at this stage - this is expected.
 docker compose up -d
+```
 
-# Step 4b: Obtain the real SSL certificate.
-# This command runs the certbot container, which will replace the dummy
-# certificate with a valid one from Let's Encrypt.
-# IMPORTANT: Replace your_email@example.com and mail.yourdomain.com with your actual values.
+**Step 4b:** Obtain the real SSL certificate (replace `your_email@example.com` and `mail.yourdomain.com` with your actual values):
+```bash
 docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email your_email@example.com --agree-tos --no-eff-email -d mail.yourdomain.com
+```
 
-# Step 4c: Restart Nginx to load the real certificate.
+**Step 4c:** Restart Nginx to load the real certificate:
+```bash
 docker compose restart nginx
 ```
 
@@ -140,25 +156,53 @@ The `renew-ssl.sh` script included in this repository will automatically renew y
 
 To set up the automation:
 
-1.  **Open the system's crontab editor:**
-    ```bash
-    sudo crontab -e
-    ```
+1. Open the system's crontab editor:
+```bash
+sudo crontab -e
+```
 
-2.  **Add this line to the bottom of the file.** This will run the script every night at 2:30 AM.
-    ```
-    30 2 * * * /path/to/your/una.email-install/renew-ssl.sh > /dev/null 2>&1
-    ```
-    *(Remember to replace `/path/to/your/una.email-install` with the actual absolute path to the directory where you cloned the repository).*
+2. Add this line to run the renewal script every night at 2:30 AM (replace `/path/to/your/una.email-install` with the actual absolute path):
+```
+30 2 * * * /path/to/your/una.email-install/renew-ssl.sh > /dev/null 2>&1
+```
 
 ---
 
 ## Usage & Troubleshooting
 
--   **Web Interface**: Access via `https://mail.yourdomain.com`
--   **Check Startup/SSL Logs**: `docker compose logs nginx`
--   **Test Email**: Send an email from an external account (like Gmail) to any address at your domain (e.g., `hello@yourdomain.com`).
+**Web Interface:** Access via `https://mail.yourdomain.com`
 
-**Troubleshooting Commands:**
+**Test Email:** Send an email from an external account (like Gmail) to any address at your domain (e.g., `hello@yourdomain.com`).
+
+### Troubleshooting Commands
+
+Check service status:
+```bash
+docker compose ps
 ```
+
+View logs for specific services:
+```bash
+docker compose logs nginx
+docker compose logs postfix
+docker compose logs web
+docker compose logs certbot
+```
+
+Check if emails are being received and processed:
+```bash
+docker compose logs postfix --tail=50
+docker compose logs web --tail=30
+```
+
+Test SMTP connectivity:
+```bash
+telnet mail.yourdomain.com 25
+```
+
+Restart services if needed:
+```bash
+docker compose restart
+docker compose restart nginx
+docker compose restart postfix
 ```
