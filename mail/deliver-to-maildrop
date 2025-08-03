@@ -2,14 +2,26 @@
 # Email delivery script for UNA
 # This script receives email content from Postfix pipe transport
 # and saves it to maildrop directory for auto-processor to handle
+# 
+# Arguments: $1 = recipient email address
 
-# Generate unique filename with timestamp and process ID
+RECIPIENT="$1"
 TIMESTAMP=$(date +%s)
 PID=$$
-FILENAME="email_${TIMESTAMP}_${PID}"
+
+# Create filename that includes recipient info for auto-processor
+if [[ -n "$RECIPIENT" ]]; then
+    # Sanitize recipient for filename (replace @ and . with _)
+    SAFE_RECIPIENT=$(echo "$RECIPIENT" | sed 's/@/_at_/g; s/\./_dot_/g')
+    FILENAME="email_${TIMESTAMP}_${PID}_${SAFE_RECIPIENT}"
+else
+    FILENAME="email_${TIMESTAMP}_${PID}"
+fi
 
 # Save the email content to maildrop directory
 cat > "/var/spool/postfix/maildrop/${FILENAME}"
 
-# Exit successfully
+# Log the delivery
+echo "$(date): Delivered email to ${FILENAME} for recipient ${RECIPIENT}" >> /tmp/delivery.log
+
 exit 0
