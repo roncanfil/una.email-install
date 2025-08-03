@@ -19,8 +19,8 @@ if [ "$SKIP_CONFIG" != "true" ]; then
     postmap /etc/postfix/virtual
 else
     echo "Using mounted config files with domain substitution"
-    # Process the main.cf template
-    envsubst '${DOMAIN}' < /etc/postfix/main.cf.template > /etc/postfix/main.cf
+    # Process the main.cf template using sed
+    sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/main.cf.template > /etc/postfix/main.cf
     
     # Ensure virtual file is mapped (no transport file needed)
     postmap /etc/postfix/virtual
