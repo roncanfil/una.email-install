@@ -33,4 +33,4 @@ postlog   unix-dgram n  -       n       -       1       postlogd
 # Custom transport for UNA email handler
 # ====================================================================
 una-email-handler    unix  -       n       n       -       -       pipe
-  flags=Xhq user=postfix argv=/bin/bash -c 'cat > /var/spool/postfix/maildrop/email_$(date +%s)_$$' 
+  flags=Xhq user=postfix argv=/app/deliver-to-maildrop 

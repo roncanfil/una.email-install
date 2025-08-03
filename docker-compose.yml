@@ -34,6 +34,7 @@ services:
       - ./mail/transport:/etc/postfix/transport
       - ./mail/virtual:/etc/postfix/virtual
       - ./mail/entrypoint.sh:/app/entrypoint.sh
+      - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop
       - ./letsencrypt/etc:/etc/letsencrypt
     ports:
       - "25:25"

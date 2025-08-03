@@ -1,0 +1,15 @@
+#!/bin/bash
+# Email delivery script for UNA
+# This script receives email content from Postfix pipe transport
+# and saves it to maildrop directory for auto-processor to handle
+
+# Generate unique filename with timestamp and process ID
+TIMESTAMP=$(date +%s)
+PID=$$
+FILENAME="email_${TIMESTAMP}_${PID}"
+
+# Save the email content to maildrop directory
+cat > "/var/spool/postfix/maildrop/${FILENAME}"
+
+# Exit successfully
+exit 0
