@@ -18,9 +18,11 @@ if [ "$SKIP_CONFIG" != "true" ]; then
     touch /etc/postfix/virtual
     postmap /etc/postfix/virtual
 else
-    echo "Skipping Postfix configuration (using mounted config files)"
-    # Ensure transport and virtual files are mapped
-    postmap /etc/postfix/transport
+    echo "Using mounted config files with domain substitution"
+    # Process the main.cf template
+    envsubst '${DOMAIN}' < /etc/postfix/main.cf.template > /etc/postfix/main.cf
+    
+    # Ensure virtual file is mapped (no transport file needed)
     postmap /etc/postfix/virtual
 fi
 

@@ -29,9 +29,8 @@ services:
       DOMAIN: ${DOMAIN}
       SKIP_CONFIG: "true"
     volumes:
-      - ./mail/main.cf:/etc/postfix/main.cf
+      - ./mail/main.cf.template:/etc/postfix/main.cf.template
       - ./mail/master.cf:/etc/postfix/master.cf
-      - ./mail/transport:/etc/postfix/transport
       - ./mail/virtual:/etc/postfix/virtual
       - ./mail/entrypoint.sh:/app/entrypoint.sh
       - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop
