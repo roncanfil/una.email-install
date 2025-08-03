@@ -1,0 +1,10 @@
+# Virtual mailbox mappings for UNA email system
+# All emails to these addresses will be delivered via una-email-handler transport
+
+# Test addresses
+hola@ronaldhenriquez.com        mailbox
+hello@ronaldhenriquez.com       mailbox
+test@ronaldhenriquez.com        mailbox
+
+# Catch-all for any other address in the domain  
+@ronaldhenriquez.com           mailbox
