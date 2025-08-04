@@ -113,12 +113,54 @@ if [ -f renew-ssl.sh ]; then
 fi
 
 echo ""
-echo "=== Configuration Complete ==="
+echo "=== Starting Services ==="
 echo ""
-echo "📋 DNS Configuration Required:"
-echo "   Please see the README.md for the full list of required DNS records."
+
+# Start all services
+echo "🚀 Starting Docker services..."
+docker compose up -d
+
+# Wait for services to initialize
+echo "⏳ Waiting for services to initialize..."
+sleep 15
+
+# Check if services are running
+echo "📋 Checking service status..."
+docker compose ps
+
+# Initialize database
 echo ""
-echo "🚀 Next steps:"
-echo "   Follow the deployment instructions in Step 4 of the README.md to launch the services."
+echo "=== Initializing Database ==="
+echo "🗄️  Running database migrations..."
+docker compose exec -T web npx prisma migrate deploy
+
+# Verify database tables
+echo "✅ Verifying database tables..."
+docker compose exec -T postgres psql -U una_email -d una_email -c "\dt" | grep -q "emails" && echo "✅ Database tables created successfully" || echo "❌ Database initialization failed"
+
+# Create a default alias
+echo "📧 Creating default alias: hello@$DOMAIN"
+docker compose exec -T postgres psql -U una_email -d una_email -c "INSERT INTO aliases (alias, created_at) VALUES ('hello', NOW()) ON CONFLICT DO NOTHING;"
+
 echo ""
-echo "✅ UNA.Email is now configured for domain: $DOMAIN" 
+echo "=== SSL Certificate Setup ==="
+echo "🔒 Obtaining SSL certificate..."
+docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email $LETSENCRYPT_EMAIL --agree-tos --no-eff-email -d mail.$DOMAIN
+
+echo "🔄 Restarting Nginx with SSL certificate..."
+docker compose restart nginx
+
+echo ""
+echo "=== Installation Complete ==="
+echo ""
+echo "✅ UNA.Email is now fully installed and configured for domain: $DOMAIN"
+echo ""
+echo "🌐 Web Interface: https://mail.$DOMAIN"
+echo "📧 Test Email: Send to hello@$DOMAIN"
+echo ""
+echo "📋 Next Steps:"
+echo "1. Set up MX record in your DNS: mail.$DOMAIN (priority 10)"
+echo "2. Set up SSL auto-renewal: sudo crontab -e"
+echo "   Add: 30 2 * * * $(pwd)/renew-ssl.sh > /dev/null 2>&1"
+echo ""
+echo "🎉 Your email server is ready!" 

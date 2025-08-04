@@ -89,9 +89,9 @@ Both firewall layers must allow traffic for connections to succeed.
 
 ---
 
-## Step 3: Installation
+## Step 3: One-Click Installation
 
-Now, with the environment prepared, we can install the Una.Email software.
+Now, with the environment prepared, we can install the Una.Email software with a single command.
 
 1. Clone this repository:
 ```bash
@@ -99,7 +99,7 @@ git clone https://github.com/roncanfil/una.email-install.git
 cd una.email-install
 ```
 
-2. Run the interactive installation script:
+2. Run the one-click installation script:
 ```bash
 ./install.sh
 ```
@@ -108,32 +108,19 @@ cd una.email-install
    - Enter your domain name (e.g., yourdomain.com)
    - Enter your email address (for SSL certificate notifications)
 
----
+**The installation script will automatically:**
+- ✅ Generate configuration files
+- ✅ Start all Docker services
+- ✅ Initialize the database with required tables
+- ✅ Create a default email alias (`hello@yourdomain.com`)
+- ✅ Obtain SSL certificate from Let's Encrypt
+- ✅ Configure secure HTTPS access
 
-## Step 4: Launch and Secure the Application
-
-This is a two-step process. We first launch the services (Nginx will start with a temporary, self-signed certificate), and then we run Certbot to obtain a real SSL certificate.
-
-**Step 4a:** Launch all services (Nginx will start with a temporary certificate):
-```bash
-docker compose up -d
-```
-
-**Step 4b:** Obtain the real SSL certificate (replace `your_email@example.com` and `mail.yourdomain.com` with your actual values):
-```bash
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email your_email@example.com --agree-tos --no-eff-email -d mail.yourdomain.com
-```
-
-**Step 4c:** Restart Nginx to load the real certificate:
-```bash
-docker compose restart nginx
-```
-
-Your application is now live and secure.
+**Installation typically takes 2-3 minutes.** When complete, your email server will be fully operational and accessible at `https://mail.yourdomain.com`.
 
 ---
 
-## Step 5: Final DNS Record (MX)
+## Step 4: Final DNS Record (MX)
 
 Now that your server is running and secure, you can tell the world to send email to it.
 
@@ -148,7 +135,7 @@ Your email server is now live and ready to receive email.
 
 ---
 
-## Step 6: Configure Automatic SSL Renewal
+## Step 5: Configure Automatic SSL Renewal
 
 The `renew-ssl.sh` script included in this repository will automatically renew your certificate and restart Nginx.
 
