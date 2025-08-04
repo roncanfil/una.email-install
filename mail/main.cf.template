@@ -9,9 +9,8 @@ inet_protocols = ipv4
 compatibility_level = 2
 
 # The 'una-email-handler' service is defined in master.cf
-# This tells Postfix to send all virtual domain mail to our pipe script.
-virtual_alias_domains = ${DOMAIN}
-virtual_alias_maps = hash:/etc/postfix/virtual
+# This tells Postfix to send all domain mail to our pipe script.
+transport_maps = hash:/etc/postfix/transport
 
 # Standard mailbox settings
 home_mailbox = Maildir/

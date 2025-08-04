@@ -133,10 +133,6 @@ echo "✅ Generated mail/main.cf"
 sed "s/\${DOMAIN}/$DOMAIN/g" mail/transport.template > mail/transport
 echo "✅ Generated mail/transport"
 
-# Generate virtual
-sed "s/\${DOMAIN}/$DOMAIN/g" mail/virtual.template > mail/virtual
-echo "✅ Generated mail/virtual"
-
 # Set permissions for entrypoint script
 if [ -f mail/entrypoint.sh ]; then
     chmod +x mail/entrypoint.sh
