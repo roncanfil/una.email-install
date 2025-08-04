@@ -8,6 +8,43 @@ echo "=== UNA.Email Installation ==="
 echo "This script will install and configure una.email for your domain"
 echo ""
 
+# Check Docker installation
+echo "=== Checking Prerequisites ==="
+echo "🐳 Checking Docker installation..."
+
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker is not installed. Please install Docker first:"
+    echo "   For CentOS/AlmaLinux/RHEL:"
+    echo "   sudo dnf install -y docker"
+    echo "   sudo systemctl start docker"
+    echo "   sudo systemctl enable docker"
+    echo ""
+    echo "   For Ubuntu/Debian:"
+    echo "   sudo apt update && sudo apt install -y docker.io"
+    echo "   sudo systemctl start docker"
+    echo "   sudo systemctl enable docker"
+    exit 1
+fi
+
+if ! docker compose version &> /dev/null; then
+    echo "❌ Docker Compose is not installed or not working. Please install Docker Compose:"
+    echo "   sudo dnf install -y docker-compose-plugin  # CentOS/AlmaLinux/RHEL"
+    echo "   sudo apt install -y docker-compose-plugin  # Ubuntu/Debian"
+    exit 1
+fi
+
+if ! docker ps &> /dev/null; then
+    echo "❌ Docker daemon is not running or permission denied. Please:"
+    echo "   sudo systemctl start docker"
+    echo "   sudo usermod -aG docker $USER"
+    echo "   Then logout and login again, or run: newgrp docker"
+    exit 1
+fi
+
+echo "✅ Docker: $(docker --version)"
+echo "✅ Docker Compose: $(docker compose version --short)"
+echo ""
+
 # Function to validate domain format
 validate_domain() {
     local domain=$1
@@ -145,7 +182,20 @@ docker compose exec -T postgres psql -U una_email -d una_email -c "INSERT INTO a
 echo ""
 echo "=== SSL Certificate Setup ==="
 echo "🔒 Obtaining SSL certificate..."
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email $LETSENCRYPT_EMAIL --agree-tos --no-eff-email -d mail.$DOMAIN
+
+# Check if certificate already exists
+if docker compose run --rm certbot certificates | grep -q "mail.$DOMAIN"; then
+    echo "ℹ️  Certificate already exists for mail.$DOMAIN, skipping certificate request..."
+    echo "✅ Using existing SSL certificate"
+else
+    echo "🆕 Obtaining new certificate for mail.$DOMAIN..."
+    if ! docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email $LETSENCRYPT_EMAIL --agree-tos --no-eff-email -d mail.$DOMAIN; then
+        echo "⚠️  SSL certificate request failed (possibly rate limited)"
+        echo "ℹ️  Your email server will work with HTTP only"
+        echo "ℹ️  You can manually request SSL later: ./renew-ssl.sh"
+        echo "ℹ️  Or wait for rate limits to reset and run: docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email $LETSENCRYPT_EMAIL --agree-tos --no-eff-email -d mail.$DOMAIN"
+    fi
+fi
 
 echo "🔄 Restarting Nginx with SSL certificate..."
 docker compose restart nginx
