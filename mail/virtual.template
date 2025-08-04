@@ -1,1 +1,5 @@
-@${DOMAIN} una-email-handler: 
+# Virtual alias mappings for UNA email system
+# All emails to these addresses will be delivered via una-email-handler transport
+
+# Catch-all for any address in the domain - routes to una-email-handler transport
+@${DOMAIN} una-email-handler:
