@@ -111,27 +111,13 @@ fi
 
 echo ""
 
-# Generate Postfix configuration templates
-echo "📧 Using Postfix configuration templates..."
-
-# Check if templates exist
-if [ ! -f mail/main.cf.template ] || [ ! -f mail/transport.template ] || [ ! -f mail/virtual.template ]; then
-    echo "❌ Error: Template files not found. Please ensure mail/main.cf.template, mail/transport.template, and mail/virtual.template exist."
+# Verify Postfix configuration templates exist
+echo "📧 Verifying Postfix configuration templates..."
+if [ ! -f mail/main.cf.template ] || [ ! -f mail/transport.template ]; then
+    echo "❌ Error: Template files not found. Please ensure mail/main.cf.template and mail/transport.template exist."
     exit 1
 fi
-
 echo "✅ Found Postfix configuration templates"
-
-# Generate actual configuration files
-echo "📝 Generating configuration files for domain: $DOMAIN"
-
-# Generate main.cf
-sed "s/\${DOMAIN}/$DOMAIN/g" mail/main.cf.template > mail/main.cf
-echo "✅ Generated mail/main.cf"
-
-# Generate transport
-sed "s/\${DOMAIN}/$DOMAIN/g" mail/transport.template > mail/transport
-echo "✅ Generated mail/transport"
 
 # Set permissions for entrypoint script
 if [ -f mail/entrypoint.sh ]; then
@@ -143,6 +129,28 @@ fi
 if [ -f renew-ssl.sh ]; then
     chmod +x renew-ssl.sh
     echo "✅ Set permissions for renew-ssl.sh"
+fi
+
+# Ensure delivery script is executable
+if [ -f mail/deliver-to-maildrop ]; then
+    chmod +x mail/deliver-to-maildrop
+    echo "✅ Set permissions for mail/deliver-to-maildrop"
+fi
+
+# On SELinux systems (e.g., AlmaLinux/RHEL), add :Z relabel to bind mounts so scripts are executable in container
+echo ""
+echo "=== Host Compatibility (SELinux) ==="
+if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce)" != "Disabled" ]; then
+    echo "🔐 SELinux detected ($(getenforce)). Applying :Z to Postfix bind mounts in docker-compose.yml"
+    # Apply :Z only if not already present
+    sed -i -E "s#(\./mail/main\.cf\.template:/etc/postfix/main\.cf\.template)(:Z)?$#\1:Z#" docker-compose.yml || true
+    sed -i -E "s#(\./mail/master\.cf:/etc/postfix/master\.cf)(:Z)?$#\1:Z#" docker-compose.yml || true
+    sed -i -E "s#(\./mail/transport\.template:/etc/postfix/transport\.template)(:Z)?$#\1:Z#" docker-compose.yml || true
+    sed -i -E "s#(\./mail/entrypoint\.sh:/app/entrypoint\.sh)(:Z)?$#\1:Z#" docker-compose.yml || true
+    sed -i -E "s#(\./mail/deliver-to-maildrop:/app/deliver-to-maildrop)(:Z)?$#\1:Z#" docker-compose.yml || true
+    echo "✅ Updated bind mounts with :Z labels"
+else
+    echo "ℹ️  SELinux not detected or disabled; no relabeling needed"
 fi
 
 echo ""
@@ -160,6 +168,11 @@ sleep 15
 # Check if services are running
 echo "📋 Checking service status..."
 docker compose ps
+
+# Quick Postfix sanity: render transport from template (container entrypoint also does this)
+echo ""
+echo "=== Postfix Sanity Check ==="
+docker compose exec -T postfix sh -lc "postmap /etc/postfix/transport 2>/dev/null || true; postmap /etc/postfix/virtual 2>/dev/null || true; postconf -n | egrep '^(transport_maps|myhostname|mydomain|mydestination)$' | cat; echo '--- transport ---'; [ -f /etc/postfix/transport ] && sed -n '1,50p' /etc/postfix/transport | cat || echo missing; echo '--- handler ---'; egrep '^una-email-handler' -A1 /etc/postfix/master.cf | cat" || true
 
 # Initialize database
 echo ""
@@ -202,11 +215,12 @@ echo ""
 echo "✅ UNA.Email is now fully installed and configured for domain: $DOMAIN"
 echo ""
 echo "🌐 Web Interface: https://mail.$DOMAIN"
-echo "📧 Test Email: Send to hello@$DOMAIN"
+echo "📧 Test Email: Send to hello@$DOMAIN (e.g., from ProtonMail)"
 echo ""
 echo "📋 Next Steps:"
 echo "1. Set up MX record in your DNS: mail.$DOMAIN (priority 10)"
 echo "2. Set up SSL auto-renewal: sudo crontab -e"
 echo "   Add: 30 2 * * * $(pwd)/renew-ssl.sh > /dev/null 2>&1"
+echo "3. Verify pipeline: docker compose exec postfix postqueue -p | cat; docker compose exec postgres psql -U una_email -d una_email -c 'SELECT id, subject, from_email, created_at FROM emails ORDER BY created_at DESC LIMIT 10;'"
 echo ""
 echo "🎉 Your email server is ready!" 
