@@ -33,4 +33,4 @@ postlog   unix-dgram n  -       n       -       1       postlogd
 # Custom transport for UNA email handler
 # ====================================================================
 una-email-handler    unix  -       n       n       -       -       pipe
-  flags=DRXhu user=postfix argv=/app/deliver-to-maildrop ${recipient} 
+  flags=DRXhu user=postfix argv=/app/deliver-to-maildrop ${recipient}

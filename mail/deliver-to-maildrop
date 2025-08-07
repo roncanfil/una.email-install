@@ -21,6 +21,9 @@ fi
 # Save the email content to maildrop directory
 cat > "/var/spool/postfix/maildrop/${FILENAME}"
 
+# Ensure permissive mode so auto-processor can read and remove
+chmod 0600 "/var/spool/postfix/maildrop/${FILENAME}" || true
+
 # Log the delivery
 echo "$(date): Delivered email to ${FILENAME} for recipient ${RECIPIENT}" >> /tmp/delivery.log
 

@@ -9,7 +9,7 @@ inet_protocols = ipv4
 compatibility_level = 2
 
 # The 'una-email-handler' service is defined in master.cf
-# This tells Postfix to send all domain mail to our pipe script.
+# Route domain mail to our pipe script via transport map.
 transport_maps = hash:/etc/postfix/transport
 
 # Standard mailbox settings

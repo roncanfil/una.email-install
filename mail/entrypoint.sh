@@ -21,8 +21,21 @@ else
     echo "Using mounted config files with domain substitution"
     # Process the main.cf template using sed
     sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/main.cf.template > /etc/postfix/main.cf
-    
-    # Ensure virtual file is mapped (no transport file needed)
+
+    # Build transport map from template and postmap it
+    if [ -f "/etc/postfix/transport.template" ]; then
+        echo "Generating /etc/postfix/transport from template"
+        sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/transport.template > /etc/postfix/transport
+        postmap /etc/postfix/transport
+    else
+        echo "No transport.template found. Creating a catch-all transport map for domain ${DOMAIN}"
+        echo "${DOMAIN}          una-email-handler:" > /etc/postfix/transport
+        echo ".${DOMAIN}         una-email-handler:" >> /etc/postfix/transport
+        postmap /etc/postfix/transport
+    fi
+
+    # Ensure virtual file exists and is mapped (may be empty)
+    touch /etc/postfix/virtual
     postmap /etc/postfix/virtual
 fi
 
@@ -71,6 +84,7 @@ fi
 # Start auto-processor
 echo "Starting auto-processor..."
 chmod +x /auto-process.sh
+/bin/chmod +x /app/deliver-to-maildrop || true
 /auto-process.sh &
 AUTO_PROCESSOR_PID=$!
 echo "Auto-processor started with PID: $AUTO_PROCESSOR_PID"

@@ -29,7 +29,7 @@ services:
     volumes:
       - ./mail/main.cf.template:/etc/postfix/main.cf.template
       - ./mail/master.cf:/etc/postfix/master.cf
-      - ./mail/virtual:/etc/postfix/virtual
+      - ./mail/transport.template:/etc/postfix/transport.template
       - ./mail/entrypoint.sh:/app/entrypoint.sh
       - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop
       - ./letsencrypt/etc:/etc/letsencrypt
