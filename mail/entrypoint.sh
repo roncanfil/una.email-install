@@ -1,101 +1,89 @@
 #!/bin/bash
-set -ex
+set -euo pipefail
+set -x
 
 echo "=== UNA Email Mail Server Starting ==="
 
-# Configure Postfix (skip if SKIP_CONFIG is set)
-if [ "$SKIP_CONFIG" != "true" ]; then
-    echo "Configuring Postfix..."
-    postconf -e "myhostname = mail.${DOMAIN:-example.com}"
-    postconf -e "mydomain = ${DOMAIN:-example.com}"
-    postconf -e "myorigin = ${DOMAIN:-example.com}"
-
-    # Create transport map
-    echo "@${DOMAIN:-example.com} una-email-handler:" > /etc/postfix/transport
-    postmap /etc/postfix/transport
-
-    # Create virtual alias file
-    touch /etc/postfix/virtual
-    postmap /etc/postfix/virtual
+if [ "${SKIP_CONFIG:-false}" != "true" ]; then
+  echo "Configuring Postfix..."
+  postconf -e "myhostname = mail.${DOMAIN:-example.com}"
+  postconf -e "mydomain = ${DOMAIN:-example.com}"
+  postconf -e "myorigin = ${DOMAIN:-example.com}"
+  echo "@${DOMAIN:-example.com} una-email-handler:" > /etc/postfix/transport
+  postmap /etc/postfix/transport
+  touch /etc/postfix/virtual
+  postmap /etc/postfix/virtual
 else
-    echo "Using mounted config files with domain substitution"
-    # Process the main.cf template using sed
-    sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/main.cf.template > /etc/postfix/main.cf
-
-    # Build transport map from template and postmap it
-    if [ -f "/etc/postfix/transport.template" ]; then
-        echo "Generating /etc/postfix/transport from template"
-        sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/transport.template > /etc/postfix/transport
-        postmap /etc/postfix/transport
-    else
-        echo "No transport.template found. Creating a catch-all transport map for domain ${DOMAIN}"
-        echo "${DOMAIN}          una-email-handler:" > /etc/postfix/transport
-        echo ".${DOMAIN}         una-email-handler:" >> /etc/postfix/transport
-        postmap /etc/postfix/transport
-    fi
-
-    # Ensure virtual file exists and is mapped (may be empty)
-    touch /etc/postfix/virtual
-    postmap /etc/postfix/virtual
+  echo "Using mounted config files with domain substitution"
+  sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/main.cf.template > /etc/postfix/main.cf
+  if [ -f "/etc/postfix/transport.template" ]; then
+    echo "Generating /etc/postfix/transport from template"
+    sed "s/\${DOMAIN}/${DOMAIN}/g" /etc/postfix/transport.template > /etc/postfix/transport
+    postmap /etc/postfix/transport
+  else
+    echo "No transport.template found. Creating a catch-all transport map for domain ${DOMAIN}"
+    {
+      echo "${DOMAIN}          una-email-handler:"
+      echo ".${DOMAIN}         una-email-handler:"
+      echo "*                  una-email-handler:"
+    } > /etc/postfix/transport
+    postmap /etc/postfix/transport
+  fi
+  touch /etc/postfix/virtual
+  postmap /etc/postfix/virtual
 fi
 
-# Fix permissions - corrected for proper postfix ownership
-chown root:root /var/spool/postfix/
-chown -R postfix:postdrop /var/spool/postfix/maildrop
-chown postfix:postdrop /var/spool/postfix/public
-
-# Set ownership for existing directories only
+# Permissions
+chown root:root /var/spool/postfix/ || true
+chown -R postfix:postdrop /var/spool/postfix/maildrop || true
+chown postfix:postdrop /var/spool/postfix/public || true
 for dir in private active bounce corrupt defer deferred flush incoming trace; do
-    if [ -d "/var/spool/postfix/$dir" ]; then
-        chown postfix:postdrop "/var/spool/postfix/$dir"
-    fi
+  [ -d "/var/spool/postfix/$dir" ] && chown postfix:postdrop "/var/spool/postfix/$dir"
 done
-
-# Fix pid directory ownership specifically
-chown root:root /var/spool/postfix/pid
-
-chown -R postfix:postfix /var/lib/postfix
-
-# Create rsyslog directory
+chown root:root /var/spool/postfix/pid || true
+chown -R postfix:postfix /var/lib/postfix || true
 mkdir -p /var/run/rsyslog
 
-# Start Node.js API server
+# Start API server
 echo "Starting Node.js API server..."
 node /app/api-server.js &
-API_PID=$!
-echo "API server started with PID: $API_PID"
+sleep 2
 
-# Give API server time to start
-sleep 3
+# Wrapper to ensure handler has DB env even when run by pipe as postfix user
+cat > /app/run-handler.sh <<WRAP
+#!/bin/sh
+export DB_HOST="${DB_HOST:-postgres}"
+export DB_USER="${DB_USER:-una_email}"
+export DB_PASSWORD="${DB_PASSWORD:-una_email_password}"
+export DB_NAME="${DB_NAME:-una_email}"
+export DB_PORT="${DB_PORT:-5432}"
+exec /usr/local/bin/node /app/handler.js "$@"
+WRAP
+chmod +x /app/run-handler.sh
+
+# Ensure debug log file is writable
+touch /tmp/handler-debug.log || true
+chmod 666 /tmp/handler-debug.log || true
 
 # Start Postfix
 echo "Starting Postfix..."
 postfix stop 2>/dev/null || true
-sleep 2
+sleep 1
 postfix start
-sleep 3
+sleep 2
+postfix status >/dev/null 2>&1 || { echo "ERROR: Postfix failed to start"; exit 1; }
 
-# Verify postfix is running
-if ! postfix status > /dev/null 2>&1; then
-    echo "ERROR: Postfix failed to start"
-    exit 1
-fi
-
-# Start auto-processor
+# Start auto-processor (safe no-op with direct pipe)
 echo "Starting auto-processor..."
-chmod +x /auto-process.sh
+chmod +x /auto-process.sh || true
 /bin/chmod +x /app/deliver-to-maildrop || true
 /auto-process.sh &
-AUTO_PROCESSOR_PID=$!
-echo "Auto-processor started with PID: $AUTO_PROCESSOR_PID"
 
 echo "=== UNA Mail Server is ready! ==="
 echo "Domain: ${DOMAIN}"
 echo "Postfix is running and auto-processor is active"
 
-# Keep container alive and monitor processes
-echo "Entering monitoring loop..."
 while true; do
-    echo "All services running - $(date)"
-    sleep 30
-done 
+  echo "All services running - $(date)"
+  sleep 30
+done

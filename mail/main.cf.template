@@ -6,7 +6,7 @@ mydomain = ${DOMAIN}
 myorigin = ${DOMAIN}
 inet_interfaces = all
 inet_protocols = ipv4
-compatibility_level = 2
+compatibility_level = 3.6
 
 # The 'una-email-handler' service is defined in master.cf
 # Route domain mail to our pipe script via transport map.
@@ -42,7 +42,7 @@ smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated permit_au
 relayhost = 
 relay_domains = ${DOMAIN}, .${DOMAIN}
 relay_transport = una-email-handler:
-mydestination = localhost.localdomain, localhost
+mydestination =
 debug_peer_list = 127.0.0.1
 debug_peer_level = 3
 
@@ -53,4 +53,6 @@ maillog_file = /dev/stdout
 smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
 smtpd_client_restrictions = permit_mynetworks
 smtpd_helo_required = yes
-smtpd_helo_restrictions = permit_mynetworks, reject_invalid_helo_hostname, reject_non_fqdn_helo_hostname 
+smtpd_helo_restrictions = permit_mynetworks, reject_invalid_helo_hostname, reject_non_fqdn_helo_hostname
+virtual_mailbox_domains = ${DOMAIN}
+virtual_transport = una-email-handler:

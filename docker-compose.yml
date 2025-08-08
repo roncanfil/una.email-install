@@ -27,11 +27,11 @@ services:
       DOMAIN: ${DOMAIN}
       SKIP_CONFIG: "true"
     volumes:
-      - ./mail/main.cf.template:/etc/postfix/main.cf.template
-      - ./mail/master.cf:/etc/postfix/master.cf
-      - ./mail/transport.template:/etc/postfix/transport.template
-      - ./mail/entrypoint.sh:/app/entrypoint.sh
-      - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop
+      - ./mail/main.cf.template:/etc/postfix/main.cf.template:Z
+      - ./mail/master.cf:/etc/postfix/master.cf:Z
+      - ./mail/transport.template:/etc/postfix/transport.template:Z
+      - ./mail/entrypoint.sh:/app/entrypoint.sh:Z
+      - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop:Z
       - ./letsencrypt/etc:/etc/letsencrypt
     ports:
       - "25:25"
