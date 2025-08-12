@@ -115,6 +115,8 @@ cd una.email-install
 - ✅ Create a default email alias (`hello@yourdomain.com`)
 - ✅ Obtain SSL certificate from Let's Encrypt
 - ✅ Configure secure HTTPS access
+ - ✅ Bake the mail domain into the handler runtime so inbound mail stores reliably
+ - ✅ Configure Postfix transport and pipe safely (no wildcard, pipe runs as `nobody`)
 
 **Installation typically takes 2-3 minutes.** When complete, your email server will be fully operational and accessible at `https://mail.yourdomain.com`.
 
@@ -192,4 +194,15 @@ Restart services if needed:
 docker compose restart
 docker compose restart nginx
 docker compose restart postfix
+```
+
+### Validation checklist
+
+After install, verify:
+
+```bash
+docker compose exec postfix postconf -n | egrep '^(mydestination|transport_maps|virtual_mailbox_domains|virtual_transport|relay_domains|relay_transport|smtpd_use_tls|smtpd_tls_cert_file|smtpd_tls_key_file)'
+docker compose exec postfix sed -n '1,50p' /etc/postfix/transport | cat
+docker compose exec postfix egrep '^una-email-handler' -A1 /etc/postfix/master.cf | cat
+docker compose exec postfix tail -n 50 /tmp/handler-debug.log | tail -n 5
 ```

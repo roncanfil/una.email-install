@@ -20,7 +20,7 @@ services:
     environment:
       POSTFIX_HOSTNAME: mail.${DOMAIN}
       DB_HOST: postgres
-      DB_PORT: 5432
+      # Do not set DB_PORT to avoid accidental non-numeric strings; wrapper defaults to 5432
       DB_NAME: una_email
       DB_USER: una_email
       DB_PASSWORD: ${DB_PASSWORD}

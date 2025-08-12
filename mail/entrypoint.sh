@@ -49,17 +49,42 @@ echo "Starting Node.js API server..."
 node /app/api-server.js &
 sleep 2
 
-# Wrapper to ensure handler has DB env even when run by pipe as postfix user
+## Wrapper to ensure handler has DB env and stable DOMAIN/port
+DOM_BAKE="${DOMAIN:-}"
+if [ -z "$DOM_BAKE" ]; then
+  DOM_BAKE="$(postconf -h mydomain 2>/dev/null | tr -d '\r' || true)"
+fi
 cat > /app/run-handler.sh <<WRAP
 #!/bin/sh
 export DB_HOST="${DB_HOST:-postgres}"
 export DB_USER="${DB_USER:-una_email}"
 export DB_PASSWORD="${DB_PASSWORD:-una_email_password}"
 export DB_NAME="${DB_NAME:-una_email}"
-export DB_PORT="${DB_PORT:-5432}"
+unset DB_PORT
+export DOMAIN="$DOM_BAKE"
+echo "[ENV] DOMAIN=\$DOMAIN DB_HOST=\$DB_HOST DB_PORT=\${DB_PORT:-unset} ARGV=\$*" >> /tmp/handler-debug.log
 exec /usr/local/bin/node /app/handler.js "$@"
 WRAP
 chmod +x /app/run-handler.sh
+
+# Ensure TLS certs are in chroot-safe location if present
+mkdir -p /etc/postfix/tls || true
+if [ -f "/etc/letsencrypt/live/mail.${DOMAIN}/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/mail.${DOMAIN}/privkey.pem" ]; then
+  cp -f "/etc/letsencrypt/live/mail.${DOMAIN}/fullchain.pem" /etc/postfix/tls/fullchain.pem || true
+  cp -f "/etc/letsencrypt/live/mail.${DOMAIN}/privkey.pem" /etc/postfix/tls/privkey.pem || true
+  chown root:postfix /etc/postfix/tls/privkey.pem || true
+  chmod 640 /etc/postfix/tls/privkey.pem || true
+fi
+
+# Provide entropy for TLS and ensure tlsmgr is present
+command -v rngd >/dev/null 2>&1 && rngd -r /dev/urandom || true
+grep -q '^tlsmgr\s\+unix' /etc/postfix/master.cf || echo 'tlsmgr    unix  -       -       n       1000?   1       tlsmgr' >> /etc/postfix/master.cf
+
+# Ensure maillog goes to a path usable if chrooted
+mkdir -p /var/spool/postfix/dev
+ln -snf /proc/1/fd/1 /var/spool/postfix/dev/stdout
+ln -snf /proc/1/fd/2 /var/spool/postfix/dev/stderr
+postconf -e maillog_file=/var/spool/postfix/dev/stdout || true
 
 # Ensure debug log file is writable
 touch /tmp/handler-debug.log || true

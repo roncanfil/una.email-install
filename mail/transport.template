@@ -4,4 +4,3 @@
 # Handle the main domain and all subdomains
 ${DOMAIN}          una-email-handler:
 .${DOMAIN}         una-email-handler:
-*                  una-email-handler:

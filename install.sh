@@ -172,7 +172,7 @@ docker compose ps
 # Quick Postfix sanity: render transport from template (container entrypoint also does this)
 echo ""
 echo "=== Postfix Sanity Check ==="
-docker compose exec -T postfix sh -lc "postmap /etc/postfix/transport 2>/dev/null || true; postmap /etc/postfix/virtual 2>/dev/null || true; postconf -n | egrep '^(transport_maps|myhostname|mydomain|mydestination)$' | cat; echo '--- transport ---'; [ -f /etc/postfix/transport ] && sed -n '1,50p' /etc/postfix/transport | cat || echo missing; echo '--- handler ---'; egrep '^una-email-handler' -A1 /etc/postfix/master.cf | cat" || true
+docker compose exec -T postfix sh -lc "postmap /etc/postfix/transport 2>/dev/null || true; postmap /etc/postfix/virtual 2>/dev/null || true; postconf -n | egrep '^(transport_maps|myhostname|mydomain|mydestination|smtpd_use_tls|smtpd_tls_cert_file|smtpd_tls_key_file)$' | cat; echo '--- transport ---'; [ -f /etc/postfix/transport ] && sed -n '1,50p' /etc/postfix/transport | cat || echo missing; echo '--- handler ---'; egrep '^una-email-handler' -A1 /etc/postfix/master.cf | cat" || true
 
 # Initialize database
 echo ""
@@ -206,8 +206,9 @@ else
     fi
 fi
 
-echo "🔄 Restarting Nginx with SSL certificate..."
-docker compose restart nginx
+echo "🔄 Syncing certs into Postfix chroot and restarting services..."
+docker compose exec -T postfix sh -lc 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/privkey.pem" ]; then cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/privkey.pem" /etc/postfix/tls/privkey.pem && chown root:postfix /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload' || true
+docker compose restart nginx postfix
 
 echo ""
 echo "=== Installation Complete ==="
