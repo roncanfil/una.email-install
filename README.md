@@ -89,6 +89,18 @@ Both firewall layers must allow traffic for connections to succeed.
 
 ---
 
+## Step 1.5: DNS Checklist (before install)
+
+Set these records up front so inbound mail and validation work immediately:
+
+- **A (mail)**: `mail.yourdomain.com` → `YOUR_SERVER_IP`
+- **PTR/rDNS (at your VPS provider)**: `YOUR_SERVER_IP` → `mail.yourdomain.com`
+- **SPF (TXT at @)**: start with a safe record that names the host and IP
+  - Example: `v=spf1 a:mail.yourdomain.com ip4:YOUR_SERVER_IP mx ~all`
+  - Stricter alternative: `v=spf1 ip4:YOUR_SERVER_IP -all`
+
+You will add MX and DKIM later (after containers are up).
+
 ## Step 3: One-Click Installation
 
 Now, with the environment prepared, we can install the Una.Email software with a single command.
@@ -206,3 +218,45 @@ docker compose exec postfix sed -n '1,50p' /etc/postfix/transport | cat
 docker compose exec postfix egrep '^una-email-handler' -A1 /etc/postfix/master.cf | cat
 docker compose exec postfix tail -n 50 /tmp/handler-debug.log | tail -n 5
 ```
+
+---
+
+## Step 6: Outbound Deliverability (SPF, DKIM, DMARC)
+
+To avoid rejections by Gmail and other providers, complete these DNS steps.
+
+### 6.1 SPF
+- Ensure the SPF record is present at the root (`@`). Example:
+  - `v=spf1 a:mail.yourdomain.com ip4:YOUR_SERVER_IP mx ~all`
+
+### 6.2 DKIM (self‑hosted via OpenDKIM)
+- The mail container generates a 2048‑bit key and prints the DNS TXT to logs on first start.
+- Get the TXT value:
+  ```bash
+  docker compose logs postfix | grep -A2 'DKIM DNS record' | tail -n 5
+  # or inside the container
+  docker compose exec postfix sh -lc 'cat /etc/opendkim/keys/"$DOMAIN"/s1.txt'
+  ```
+- Create DNS TXT:
+  - Name: `s1._domainkey.yourdomain.com`
+  - Value: the content printed above (everything after `s1._domainkey`)
+
+### 6.3 DMARC
+- Start in monitor mode so mail is not rejected while DKIM propagates.
+  - TXT at `_dmarc.yourdomain.com`:
+    - `v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@yourdomain.com; ruf=mailto:postmaster@yourdomain.com; fo=1; pct=100`
+- After you confirm `dkim=pass` and `spf=pass` on test messages, tighten to:
+  - `p=quarantine` and later `p=reject`.
+
+### 6.4 Test outbound
+```bash
+# Send a test email to an external address (e.g., Gmail)
+docker compose exec postfix bash -lc 'cat <<EOF | sendmail -t
+From: "UNA Test" <hello@'"$DOMAIN"'>
+To: you@example.net
+Subject: UNA outbound test
+
+Hello from UNA.
+EOF'
+```
+- In the recipient mailbox, view original headers and confirm `spf=pass`, `dkim=pass`, and `dmarc=pass`.

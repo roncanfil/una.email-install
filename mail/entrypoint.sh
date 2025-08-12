@@ -49,6 +49,53 @@ echo "Starting Node.js API server..."
 node /app/api-server.js &
 sleep 2
 
+# Configure OpenDKIM (generate keys if missing) and wire Postfix milters
+DKIM_DOM=${DOMAIN:-$(postconf -h mydomain 2>/dev/null | tr -d '\r' || echo example.com)}
+DKIM_SEL=${DKIM_SELECTOR:-s1}
+KEY_DIR="/etc/opendkim/keys/$DKIM_DOM"
+KEY_FILE="$KEY_DIR/$DKIM_SEL.private"
+TXT_FILE="$KEY_DIR/$DKIM_SEL.txt"
+mkdir -p "$KEY_DIR"
+# Ensure base config exists
+if [ ! -f /etc/opendkim/opendkim.conf ]; then
+  cat > /etc/opendkim/opendkim.conf <<CONF
+Syslog yes
+UMask 002
+OversignHeaders From
+Canonicalization relaxed/relaxed
+Mode sv
+Socket inet:8891@localhost
+PidFile /var/run/opendkim/opendkim.pid
+UserID opendkim:opendkim
+KeyTable /etc/opendkim/KeyTable
+SigningTable /etc/opendkim/SigningTable
+TrustAnchorFile /usr/share/dns/root.key
+CONF
+fi
+if [ ! -f "$KEY_FILE" ]; then
+  opendkim-genkey -b 2048 -r -s "$DKIM_SEL" -d "$DKIM_DOM" -D "$KEY_DIR"
+  chown opendkim:opendkim "$KEY_FILE" || true
+  chmod 600 "$KEY_FILE" || true
+fi
+cat > /etc/opendkim/KeyTable <<EOF
+$DKIM_SEL._domainkey.$DKIM_DOM $DKIM_DOM:$DKIM_SEL:$KEY_FILE
+EOF
+cat > /etc/opendkim/SigningTable <<EOF
+*@${DKIM_DOM} $DKIM_SEL._domainkey.${DKIM_DOM}
+EOF
+echo "127.0.0.1" > /etc/opendkim/TrustedHosts
+service opendkim stop 2>/dev/null || true
+opendkim -x /etc/opendkim/opendkim.conf || true
+# Show DKIM TXT so the operator can publish DNS
+if [ -f "$TXT_FILE" ]; then
+  echo "DKIM DNS record (add to DNS):"; cat "$TXT_FILE" || true
+fi
+# Wire Postfix to OpenDKIM
+postconf -e milter_default_action=accept
+postconf -e milter_protocol=6
+postconf -e smtpd_milters=inet:localhost:8891
+postconf -e non_smtpd_milters=inet:localhost:8891
+
 ## Wrapper to ensure handler has DB env and stable DOMAIN/port
 DOM_BAKE="${DOMAIN:-}"
 if [ -z "$DOM_BAKE" ]; then
