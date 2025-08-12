@@ -54,17 +54,18 @@ DOM_BAKE="${DOMAIN:-}"
 if [ -z "$DOM_BAKE" ]; then
   DOM_BAKE="$(postconf -h mydomain 2>/dev/null | tr -d '\r' || true)"
 fi
-cat > /app/run-handler.sh <<WRAP
+cat > /app/run-handler.sh <<'WRAP'
 #!/bin/sh
-export DB_HOST="${DB_HOST:-postgres}"
-export DB_USER="${DB_USER:-una_email}"
+export DB_HOST="postgres"
+export DB_USER="una_email"
 export DB_PASSWORD="${DB_PASSWORD:-una_email_password}"
-export DB_NAME="${DB_NAME:-una_email}"
+export DB_NAME="una_email"
 unset DB_PORT
-export DOMAIN="$DOM_BAKE"
-echo "[ENV] DOMAIN=\$DOMAIN DB_HOST=\$DB_HOST DB_PORT=\${DB_PORT:-unset} ARGV=\$*" >> /tmp/handler-debug.log
+export DOMAIN="__DOM__"
+echo "[ENV] DOMAIN=$DOMAIN DB_HOST=$DB_HOST DB_PORT=${DB_PORT:-unset} ARGV=$*" >> /tmp/handler-debug.log
 exec /usr/local/bin/node /app/handler.js "$@"
 WRAP
+sed -i "s/__DOM__/$DOM_BAKE/" /app/run-handler.sh
 chmod +x /app/run-handler.sh
 
 # Ensure TLS certs are in chroot-safe location if present
