@@ -179,9 +179,45 @@ echo "✅ Database ready"
 echo ""
 
 # ============================================
-# Step 7: Generate Setup Instructions
+# Step 7: Generate DKIM Key
 # ============================================
-echo "Step 7: Generating Setup Guide"
+echo "Step 7: Generating DKIM Key"
+echo "---------------------------"
+
+echo "🔑 Creating DKIM signing key..."
+
+# Create the DKIM directory if it doesn't exist
+docker compose exec -T rspamd mkdir -p /var/lib/rspamd/dkim
+
+# Generate the DKIM key and capture output
+DKIM_OUTPUT=$(docker compose exec -T rspamd rspamadm dkim_keygen -s una -d $DOMAIN -k /var/lib/rspamd/dkim/una.$DOMAIN.key 2>&1)
+
+# Set proper permissions on the private key
+docker compose exec -T rspamd chmod 640 /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
+docker compose exec -T rspamd chown _rspamd:_rspamd /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
+
+# Extract the DKIM public key value from the output
+# The output format is: una._domainkey IN TXT ( "v=DKIM1; k=rsa; " "p=MII..." )
+# We need to combine the quoted parts and clean it up
+DKIM_RECORD=$(echo "$DKIM_OUTPUT" | grep -E '^[[:space:]]+"' | tr -d '\n\t"' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/  */ /g')
+
+if [ -z "$DKIM_RECORD" ]; then
+    # Fallback: try a simpler extraction
+    DKIM_RECORD=$(echo "$DKIM_OUTPUT" | tr '\n' ' ' | sed 's/.*\(v=DKIM1[^)]*\).*/\1/' | tr -d '"' | sed 's/  */ /g')
+fi
+
+if [ -z "$DKIM_RECORD" ]; then
+    DKIM_RECORD="v=DKIM1; k=rsa; p=<run: docker compose exec rspamd cat /var/lib/rspamd/dkim/una.$DOMAIN.key.pub>"
+    echo "⚠️  DKIM key generated but could not extract record automatically"
+else
+    echo "✅ DKIM key generated"
+fi
+echo ""
+
+# ============================================
+# Step 8: Generate Setup Instructions
+# ============================================
+echo "Step 8: Generating Setup Guide"
 echo "------------------------------"
 
 cat > YOUR_SETUP.md << EOF
@@ -222,12 +258,9 @@ Cryptographic signature for email authentication.
 
 | Type | Host | Value |
 |------|------|-------|
-| TXT | una._domainkey | (see below) |
+| TXT | una._domainkey | $DKIM_RECORD |
 
-**To get your DKIM value, run this command on your server:**
-\`\`\`bash
-docker compose exec rspamd cat /var/lib/rspamd/dkim/una.$DOMAIN.txt 2>/dev/null || echo "DKIM key not yet generated - send a test email first"
-\`\`\`
+**Note:** The DKIM value above is long. Copy it exactly as shown (no line breaks).
 
 ### 5. DMARC Record (Recommended)
 Policy for handling authentication failures.
