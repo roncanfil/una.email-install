@@ -197,12 +197,12 @@ docker compose exec -T rspamd chown _rspamd:_rspamd /var/lib/rspamd/dkim/una.$DO
 
 # Extract the DKIM public key value from the output
 # The output format is: una._domainkey IN TXT ( "v=DKIM1; k=rsa; " "p=MII..." ) ;
-# We need to combine the quoted parts and clean up trailing ) ;
-DKIM_RECORD=$(echo "$DKIM_OUTPUT" | grep -E '^[[:space:]]+"' | tr -d '\n\t"' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/  */ /g' | sed 's/ *) *; *$//')
+# We need to extract all quoted parts and combine them
+DKIM_RECORD=$(echo "$DKIM_OUTPUT" | grep -oE '"[^"]*"' | tr -d '"\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/  */ /g')
 
 if [ -z "$DKIM_RECORD" ]; then
-    # Fallback: try a simpler extraction
-    DKIM_RECORD=$(echo "$DKIM_OUTPUT" | tr '\n' ' ' | sed 's/.*\(v=DKIM1[^)]*\).*/\1/' | tr -d '"' | sed 's/  */ /g' | sed 's/ *) *; *$//')
+    # Fallback: try extracting from v=DKIM1 onwards
+    DKIM_RECORD=$(echo "$DKIM_OUTPUT" | tr '\n' ' ' | grep -oE 'v=DKIM1[^)]+' | tr -d '"' | sed 's/  */ /g')
 fi
 
 if [ -z "$DKIM_RECORD" ]; then
@@ -312,10 +312,7 @@ dig TXT $DOMAIN +short | grep spf
 # Check DKIM record
 dig TXT una._domainkey.$DOMAIN +short
 \`\`\`
-**Expected output:**
-\`\`\`
-"v=DKIM1; k=rsa; p=MII..."
-\`\`\`
+**Expected output:** Should return your DKIM public key starting with \`"v=DKIM1; k=rsa; p=MIG...\`
 
 ---
 
