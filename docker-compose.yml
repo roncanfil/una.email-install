@@ -72,6 +72,7 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN}
+      - MAIL_SUBDOMAIN=${MAIL_SUBDOMAIN:-mail}
     command: ["/bin/bash", "-c", "chmod +x /entrypoint.sh && /entrypoint.sh"]
     depends_on:
       - web

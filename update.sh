@@ -21,7 +21,9 @@ fi
 # Load configuration
 source .env
 
+MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-mail}"
 echo "Domain: $DOMAIN"
+echo "Mail subdomain: $MAIL_SUBDOMAIN"
 echo ""
 
 # ============================================
@@ -171,7 +173,7 @@ if [ -n "$BACKUP_FILE" ]; then
     echo ""
 fi
 
-echo "🌐 Web Interface: https://mail.$DOMAIN"
+echo "🌐 Web Interface: https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
 echo "📋 Useful commands:"
 echo "   docker compose logs -f       # View all logs"

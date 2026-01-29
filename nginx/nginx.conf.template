@@ -4,7 +4,7 @@
 # Its primary job is to handle the Let's Encrypt challenge and redirect all other traffic to HTTPS.
 server {
     listen 80;
-    server_name mail.${DOMAIN};
+    server_name ${MAIL_SUBDOMAIN}.${DOMAIN};
 
     # This location block is critical for Let's Encrypt's renewal process.
     location /.well-known/acme-challenge/ {
@@ -21,11 +21,11 @@ server {
 # Server block for handling secure HTTPS traffic on port 443.
 server {
     listen 443 ssl;
-    server_name mail.${DOMAIN};
+    server_name ${MAIL_SUBDOMAIN}.${DOMAIN};
 
     # SSL Certificate Configuration
-    ssl_certificate /etc/letsencrypt/live/mail.${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mail.${DOMAIN}/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/${MAIL_SUBDOMAIN}.${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${MAIL_SUBDOMAIN}.${DOMAIN}/privkey.pem;
 
     # Modern, secure SSL settings
     ssl_protocols TLSv1.2 TLSv1.3;

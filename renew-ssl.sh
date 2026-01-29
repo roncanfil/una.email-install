@@ -26,10 +26,14 @@ if [ -z "${DOMAIN:-}" ]; then
     exit 1
 fi
 
+# Default MAIL_SUBDOMAIN to 'mail' if not set
+MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-mail}"
+FULL_HOSTNAME="${MAIL_SUBDOMAIN}.${DOMAIN}"
+
 # Function to sync certificate to Postfix
 sync_to_postfix() {
     echo "Syncing certificate to Postfix..."
-    docker compose exec -T postfix sh -lc 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/privkey.pem" ]; then cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/privkey.pem" /etc/postfix/tls/privkey.pem && chown root:postfix /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload' || true
+    docker compose exec -T postfix sh -lc 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/'"$FULL_HOSTNAME"'/fullchain.pem" ] && [ -f "/etc/letsencrypt/live/'"$FULL_HOSTNAME"'/privkey.pem" ]; then cp -f "/etc/letsencrypt/live/'"$FULL_HOSTNAME"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/'"$FULL_HOSTNAME"'/privkey.pem" /etc/postfix/tls/privkey.pem && chown root:postfix /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload' || true
 }
 
 # Function to restart Nginx
@@ -40,9 +44,9 @@ restart_nginx() {
 
 # Check if certificate exists and is expired
 CERT_EXPIRED=false
-if docker compose run --rm certbot certificates 2>/dev/null | grep -q "mail.$DOMAIN"; then
+if docker compose run --rm certbot certificates 2>/dev/null | grep -q "$FULL_HOSTNAME"; then
     # Certificate exists, check expiration
-    EXPIRY_DATE=$(docker compose run --rm certbot certificates 2>/dev/null | grep -A 5 "mail.$DOMAIN" | grep "Expiry Date" | awk '{print $3, $4, $5, $6}' || echo "")
+    EXPIRY_DATE=$(docker compose run --rm certbot certificates 2>/dev/null | grep -A 5 "$FULL_HOSTNAME" | grep "Expiry Date" | awk '{print $3, $4, $5, $6}' || echo "")
     if [ -n "$EXPIRY_DATE" ]; then
         # Convert expiry date to epoch and compare with current date
         EXPIRY_EPOCH=$(date -d "$EXPIRY_DATE" +%s 2>/dev/null || date -j -f "%b %d %H:%M:%S %Y %Z" "$EXPIRY_DATE" +%s 2>/dev/null || echo "0")
@@ -59,25 +63,20 @@ fi
 # Determine renewal method
 if [ "$FORCE_RENEW" = true ] || [ "$CERT_EXPIRED" = true ]; then
     # Force renewal path (for expired certificates or manual override)
-    if [ -z "${LETSENCRYPT_EMAIL:-}" ]; then
-        echo "❌ Error: LETSENCRYPT_EMAIL not set in .env file (required for force renewal)"
-        exit 1
-    fi
-    
     if [ "$CERT_EXPIRED" = true ]; then
         echo "⚠️  Certificate is expired. Using force renewal method..."
     else
         echo "🔄 Force renewal requested..."
     fi
     echo ""
-    
+
     # Step 1: Delete old certificate
     echo "📋 Step 1: Removing old certificate..."
-    docker compose run --rm certbot delete --cert-name mail.$DOMAIN --non-interactive || true
-    
+    docker compose run --rm certbot delete --cert-name $FULL_HOSTNAME --non-interactive || true
+
     echo ""
     echo "📋 Step 2: Obtaining new certificate..."
-    if ! docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email $LETSENCRYPT_EMAIL --agree-tos --no-eff-email -d mail.$DOMAIN; then
+    if ! docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos -d $FULL_HOSTNAME; then
         echo "❌ SSL certificate request failed"
         echo "ℹ️  Common issues:"
         echo "   - DNS not pointing to this server"
@@ -85,13 +84,13 @@ if [ "$FORCE_RENEW" = true ] || [ "$CERT_EXPIRED" = true ]; then
         echo "   - Rate limiting (wait a few hours)"
         exit 1
     fi
-    
+
     sync_to_postfix
     restart_nginx
-    
+
     echo ""
     echo "✅ SSL certificate force renewal complete!"
-    echo "🌐 Your website should now be accessible at https://mail.$DOMAIN"
+    echo "🌐 Your website should now be accessible at https://$FULL_HOSTNAME"
 else
     # Normal renewal path (for cron jobs)
     echo "Attempting to renew SSL certificate (normal renewal)..."

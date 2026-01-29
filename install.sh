@@ -90,21 +90,15 @@ fi
 echo "✅ Domain: $DOMAIN"
 echo ""
 
-# ============================================
-# Step 3: Email for SSL Certificate
-# ============================================
-echo "Step 3: SSL Certificate Email"
-echo "-----------------------------"
-
-read -p "Enter your email (for Let's Encrypt notifications): " LETSENCRYPT_EMAIL
-
-echo "✅ Email: $LETSENCRYPT_EMAIL"
+read -p "Mail subdomain [mail]: " MAIL_SUBDOMAIN
+MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-mail}"
+echo "✅ Web UI will be at: https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
 
 # ============================================
-# Step 4: Database Password
+# Step 3: Database Password
 # ============================================
-echo "Step 4: Database Password"
+echo "Step 3: Database Password"
 echo "-------------------------"
 
 # Generate a random password
@@ -124,7 +118,7 @@ fi
 echo ""
 
 # ============================================
-# Step 5: Create Configuration
+# Step 4: Create Configuration
 # ============================================
 echo "Step 5: Creating Configuration"
 echo "------------------------------"
@@ -138,7 +132,7 @@ cat > .env << EOF
 # Generated: $(date)
 
 DOMAIN=$DOMAIN
-LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL
+MAIL_SUBDOMAIN=$MAIL_SUBDOMAIN
 DB_PASSWORD=$DB_PASSWORD
 NODE_ENV=production
 IMAGE_TAG=latest
@@ -154,9 +148,9 @@ echo "✅ Set file permissions"
 echo ""
 
 # ============================================
-# Step 6: Start Services
+# Step 5: Start Services
 # ============================================
-echo "Step 6: Starting Services"
+echo "Step 5: Starting Services"
 echo "-------------------------"
 
 echo "🚀 Pulling Docker images..."
@@ -173,9 +167,9 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}"
 echo ""
 
 # ============================================
-# Step 7: Initialize Database
+# Step 6: Initialize Database
 # ============================================
-echo "Step 7: Database Setup"
+echo "Step 6: Database Setup"
 echo "----------------------"
 
 echo "🗄️  Creating database schema..."
@@ -185,16 +179,16 @@ echo "✅ Database ready"
 echo ""
 
 # ============================================
-# Step 8: SSL Certificate
+# Step 7: SSL Certificate
 # ============================================
-echo "Step 8: SSL Certificate"
+echo "Step 7: SSL Certificate"
 echo "-----------------------"
 
-if docker compose run --rm certbot certificates 2>/dev/null | grep -q "mail.$DOMAIN"; then
+if docker compose run --rm certbot certificates 2>/dev/null | grep -q "$MAIL_SUBDOMAIN.$DOMAIN"; then
     echo "✅ SSL certificate already exists"
 else
-    echo "🔒 Requesting SSL certificate for mail.$DOMAIN..."
-    if docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --email "$LETSENCRYPT_EMAIL" --agree-tos --no-eff-email -d "mail.$DOMAIN"; then
+    echo "🔒 Requesting SSL certificate for $MAIL_SUBDOMAIN.$DOMAIN..."
+    if docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos -d "$MAIL_SUBDOMAIN.$DOMAIN"; then
         echo "✅ SSL certificate obtained"
     else
         echo "⚠️  SSL certificate request failed (may be rate limited)"
@@ -203,14 +197,14 @@ else
 fi
 
 # Sync certs to Postfix and restart
-docker compose exec -T postfix sh -c 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" ]; then cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/mail.'"$DOMAIN"'/privkey.pem" /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload 2>/dev/null' || true
+docker compose exec -T postfix sh -c 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/fullchain.pem" ]; then cp -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/privkey.pem" /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload 2>/dev/null' || true
 docker compose restart nginx postfix >/dev/null 2>&1
 echo ""
 
 # ============================================
-# Step 9: Generate Setup Instructions
+# Step 8: Generate Setup Instructions
 # ============================================
-echo "Step 9: Generating Setup Guide"
+echo "Step 8: Generating Setup Guide"
 echo "------------------------------"
 
 cat > YOUR_SETUP.md << EOF
@@ -230,21 +224,21 @@ Tells email servers where to deliver mail for your domain.
 
 | Type | Host | Value | Priority |
 |------|------|-------|----------|
-| MX | @ | mail.$DOMAIN | 10 |
+| MX | @ | $MAIL_SUBDOMAIN.$DOMAIN | 10 |
 
 ### 2. A Record (Required)
 Points your mail server hostname to your server.
 
 | Type | Host | Value |
 |------|------|-------|
-| A | mail | $SERVER_IP |
+| A | $MAIL_SUBDOMAIN | $SERVER_IP |
 
 ### 3. SPF Record (Required)
 Tells receivers which servers can send email for your domain.
 
 | Type | Host | Value |
 |------|------|-------|
-| TXT | @ | v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all |
+| TXT | @ | v=spf1 a:$MAIL_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all |
 
 ### 4. DKIM Record (Required)
 Cryptographic signature for email authentication.
@@ -263,14 +257,14 @@ Policy for handling authentication failures.
 
 | Type | Host | Value |
 |------|------|-------|
-| TXT | _dmarc | v=DMARC1; p=none; rua=mailto:$LETSENCRYPT_EMAIL |
+| TXT | _dmarc | v=DMARC1; p=none; |
 
 ### 6. Reverse DNS / PTR Record (Required)
 Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT your domain registrar.
 
 | Server IP | PTR Value |
 |-----------|-----------|
-| $SERVER_IP | mail.$DOMAIN |
+| $SERVER_IP | $MAIL_SUBDOMAIN.$DOMAIN |
 
 ---
 
@@ -283,7 +277,7 @@ After adding DNS records (allow 5-30 minutes for propagation):
 dig MX $DOMAIN +short
 
 # Check A record
-dig A mail.$DOMAIN +short
+dig A $MAIL_SUBDOMAIN.$DOMAIN +short
 
 # Check SPF record
 dig TXT $DOMAIN +short | grep spf
@@ -296,8 +290,8 @@ dig TXT una._domainkey.$DOMAIN +short
 
 ## Your Installation
 
-- **Web Interface:** https://mail.$DOMAIN
-- **SMTP Server:** mail.$DOMAIN (port 25)
+- **Web Interface:** https://$MAIL_SUBDOMAIN.$DOMAIN
+- **SMTP Server:** $MAIL_SUBDOMAIN.$DOMAIN (port 25)
 
 ---
 
@@ -343,7 +337,7 @@ echo ""
 echo "📄 IMPORTANT: Open YOUR_SETUP.md for DNS configuration"
 echo "   This file contains all the DNS records you need to add."
 echo ""
-echo "🌐 Web Interface: https://mail.$DOMAIN"
+echo "🌐 Web Interface: https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
 echo "📋 Quick Commands:"
 echo "   ./update.sh      - Update to latest version"
