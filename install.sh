@@ -173,8 +173,7 @@ echo "Step 6: Database Setup"
 echo "----------------------"
 
 echo "🗄️  Creating database schema..."
-docker compose exec -T web npx prisma db push --accept-data-loss
-
+docker compose exec -T web npx prisma db push --accept-data-loss > /dev/null 2>&1
 echo "✅ Database ready"
 echo ""
 
@@ -413,15 +412,16 @@ echo ""
 # ============================================
 echo ""
 echo "=========================================="
-echo "       Installation Complete!"
+echo "     ✨ Installation Complete! ✨"
 echo "=========================================="
 echo ""
-echo "📄 NEXT STEPS:"
+echo "📄 Your personalized setup guide has been created:"
 echo ""
-echo "   1. Open YOUR_SETUP.md and add DNS records at your registrar"
-echo "   2. Wait 5-10 minutes for DNS propagation"
-echo "   3. Run: ./renew-ssl.sh --force"
+echo "   cat YOUR_SETUP.md"
 echo ""
-echo "🌐 Web Interface: https://$MAIL_SUBDOMAIN.$DOMAIN"
-echo "   (Will show security warning until SSL is configured)"
+echo "   Follow the 4 steps in the guide to finish setup."
+echo "   It only takes a few minutes!"
+echo ""
+echo "🌐 Once complete, access your email at:"
+echo "   https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
