@@ -27,16 +27,16 @@ cd una.email-install
 
 The installer will:
 - Configure firewall automatically (if firewalld or ufw is active)
-- Ask for your domain, email, and database password
+- Ask for your domain, subdomain, and database password
 - Pull and start all Docker containers
 - Set up the database
-- Request SSL certificate
+- Generate personalized DNS instructions
 
 ### 3. Configure DNS
 
-After installation, open `YOUR_SETUP.md` for personalized DNS instructions. This file contains all the exact records you need to add.
+Open `YOUR_SETUP.md` (generated during install) and add the DNS records at your registrar.
 
-**Summary of required DNS records:**
+**Required records:**
 | Record | Host | Value |
 |--------|------|-------|
 | A | mail | Your server IP |
@@ -46,7 +46,15 @@ After installation, open `YOUR_SETUP.md` for personalized DNS instructions. This
 | TXT | _dmarc | DMARC record |
 | PTR | (at VPS provider) | mail.yourdomain.com |
 
-### 4. Access Your Email
+### 4. Get SSL Certificate
+
+After DNS propagates (5-10 minutes), run:
+
+```bash
+./renew-ssl.sh --force
+```
+
+### 5. Access Your Email
 
 Open `https://mail.yourdomain.com` in your browser.
 

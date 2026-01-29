@@ -120,7 +120,7 @@ echo ""
 # ============================================
 # Step 4: Create Configuration
 # ============================================
-echo "Step 5: Creating Configuration"
+echo "Step 4: Creating Configuration"
 echo "------------------------------"
 
 # Get server IP
@@ -179,32 +179,9 @@ echo "✅ Database ready"
 echo ""
 
 # ============================================
-# Step 7: SSL Certificate
+# Step 7: Generate Setup Instructions
 # ============================================
-echo "Step 7: SSL Certificate"
-echo "-----------------------"
-
-if docker compose run --rm certbot certificates 2>/dev/null | grep -q "$MAIL_SUBDOMAIN.$DOMAIN"; then
-    echo "✅ SSL certificate already exists"
-else
-    echo "🔒 Requesting SSL certificate for $MAIL_SUBDOMAIN.$DOMAIN..."
-    if docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos -d "$MAIL_SUBDOMAIN.$DOMAIN"; then
-        echo "✅ SSL certificate obtained"
-    else
-        echo "⚠️  SSL certificate request failed (may be rate limited)"
-        echo "   You can retry later with: ./renew-ssl.sh --force"
-    fi
-fi
-
-# Sync certs to Postfix and restart
-docker compose exec -T postfix sh -c 'mkdir -p /etc/postfix/tls; if [ -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/fullchain.pem" ]; then cp -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/fullchain.pem" /etc/postfix/tls/fullchain.pem && cp -f "/etc/letsencrypt/live/'"$MAIL_SUBDOMAIN"'.'"$DOMAIN"'/privkey.pem" /etc/postfix/tls/privkey.pem && chmod 640 /etc/postfix/tls/privkey.pem; fi; postfix reload 2>/dev/null' || true
-docker compose restart nginx postfix >/dev/null 2>&1
-echo ""
-
-# ============================================
-# Step 8: Generate Setup Instructions
-# ============================================
-echo "Step 8: Generating Setup Guide"
+echo "Step 7: Generating Setup Guide"
 echo "------------------------------"
 
 cat > YOUR_SETUP.md << EOF
@@ -334,16 +311,12 @@ echo "=========================================="
 echo "       Installation Complete!"
 echo "=========================================="
 echo ""
-echo "📄 IMPORTANT: Open YOUR_SETUP.md for DNS configuration"
-echo "   This file contains all the DNS records you need to add."
+echo "📄 NEXT STEPS:"
+echo ""
+echo "   1. Open YOUR_SETUP.md and add DNS records at your registrar"
+echo "   2. Wait 5-10 minutes for DNS propagation"
+echo "   3. Run: ./renew-ssl.sh --force"
 echo ""
 echo "🌐 Web Interface: https://$MAIL_SUBDOMAIN.$DOMAIN"
-echo ""
-echo "📋 Quick Commands:"
-echo "   ./update.sh      - Update to latest version"
-echo "   ./renew-ssl.sh   - Renew SSL certificate"
-echo ""
-echo "🔧 Set up automatic SSL renewal:"
-echo "   sudo crontab -e"
-echo "   Add: 30 2 * * * $(pwd)/renew-ssl.sh > /dev/null 2>&1"
+echo "   (Will show security warning until SSL is configured)"
 echo ""
