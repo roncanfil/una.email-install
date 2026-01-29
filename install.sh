@@ -268,13 +268,6 @@ Policy for handling authentication failures.
 |------|------|-------|
 | TXT | _dmarc | v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100 |
 
-**DMARC fields explained:**
-- \`p=none\` - Monitor only (change to \`quarantine\` or \`reject\` later)
-- \`adkim=s\` / \`aspf=s\` - Strict alignment for DKIM and SPF
-- \`rua\` / \`ruf\` - Email addresses to receive authentication reports
-- \`fo=1\` - Send forensic reports on any authentication failure
-- \`pct=100\` - Apply policy to 100% of messages
-
 ### 6. Reverse DNS / PTR Record (Required)
 Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT your domain registrar.
 
