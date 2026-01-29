@@ -123,8 +123,8 @@ echo ""
 echo "Step 4: Creating Configuration"
 echo "------------------------------"
 
-# Get server IP
-SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "YOUR_SERVER_IP")
+# Get server IP (force IPv4)
+SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -4 -s icanhazip.com 2>/dev/null || curl -s api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")
 
 # Create .env file
 cat > .env << EOF
