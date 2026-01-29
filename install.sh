@@ -228,7 +228,7 @@ Server IP: $SERVER_IP
 
 ---
 
-## DNS Records to Add
+## Step 1: Add DNS Records
 
 Add these records at your domain registrar (Cloudflare, Namecheap, GoDaddy, etc.)
 
@@ -285,30 +285,90 @@ Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT y
 
 ---
 
-## Verification Commands
+## Step 2: Verify DNS Records
 
-After adding DNS records (allow 5-30 minutes for propagation):
+After adding DNS records, wait 5-30 minutes for propagation, then verify:
 
 \`\`\`bash
 # Check MX record
 dig MX $DOMAIN +short
+\`\`\`
+**Expected output:**
+\`\`\`
+10 $MAIL_SUBDOMAIN.$DOMAIN.
+\`\`\`
 
+\`\`\`bash
 # Check A record
 dig A $MAIL_SUBDOMAIN.$DOMAIN +short
+\`\`\`
+**Expected output:**
+\`\`\`
+$SERVER_IP
+\`\`\`
 
+\`\`\`bash
 # Check SPF record
 dig TXT $DOMAIN +short | grep spf
+\`\`\`
+**Expected output:**
+\`\`\`
+"v=spf1 a:$MAIL_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"
+\`\`\`
 
+\`\`\`bash
 # Check DKIM record
 dig TXT una._domainkey.$DOMAIN +short
+\`\`\`
+**Expected output:**
+\`\`\`
+"v=DKIM1; k=rsa; p=MII..."
 \`\`\`
 
 ---
 
-## Your Installation
+## Step 3: Get SSL Certificate
+
+Once DNS is verified, obtain your SSL certificate:
+
+\`\`\`bash
+./renew-ssl.sh --force
+\`\`\`
+
+**Expected output:**
+\`\`\`
+🔄 Force renewal requested...
+
+📋 Step 1: Removing old certificate...
+📋 Step 2: Obtaining new certificate...
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+...
+Successfully received certificate.
+
+Syncing certificate to Postfix...
+Restarting Nginx to apply new certificate...
+
+✅ SSL certificate force renewal complete!
+🌐 Your website should now be accessible at https://$MAIL_SUBDOMAIN.$DOMAIN
+\`\`\`
+
+---
+
+## Step 4: Access Your Email
+
+Open your browser and go to:
+
+**https://$MAIL_SUBDOMAIN.$DOMAIN**
+
+You should see the UNA Email login page with a valid SSL certificate (green padlock).
+
+---
+
+## Your Installation Details
 
 - **Web Interface:** https://$MAIL_SUBDOMAIN.$DOMAIN
 - **SMTP Server:** $MAIL_SUBDOMAIN.$DOMAIN (port 25)
+- **Server IP:** $SERVER_IP
 
 ---
 
@@ -319,7 +379,7 @@ dig TXT una._domainkey.$DOMAIN +short
 ./update.sh
 \`\`\`
 
-**Renew SSL (runs automatically via cron, but can be manual):**
+**Renew SSL manually (runs automatically via cron):**
 \`\`\`bash
 ./renew-ssl.sh
 \`\`\`
@@ -329,6 +389,11 @@ dig TXT una._domainkey.$DOMAIN +short
 docker compose logs -f postfix    # Mail server
 docker compose logs -f web        # Web interface
 docker compose logs -f rspamd     # Spam filter
+\`\`\`
+
+**Check service status:**
+\`\`\`bash
+docker compose ps
 \`\`\`
 
 ---
