@@ -46,6 +46,23 @@ fi
 
 echo "✅ Docker: $(docker --version | cut -d' ' -f3 | tr -d ',')"
 echo "✅ Docker Compose: $(docker compose version --short)"
+
+# Configure firewall if present
+if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then
+    echo "🔥 Configuring firewall (firewalld)..."
+    firewall-cmd --add-port={22,25,80,443}/tcp --permanent > /dev/null 2>&1 || true
+    firewall-cmd --reload > /dev/null 2>&1 || true
+    echo "✅ Firewall ports opened (22, 25, 80, 443)"
+elif command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+    echo "🔥 Configuring firewall (ufw)..."
+    ufw allow 22/tcp > /dev/null 2>&1 || true
+    ufw allow 25/tcp > /dev/null 2>&1 || true
+    ufw allow 80/tcp > /dev/null 2>&1 || true
+    ufw allow 443/tcp > /dev/null 2>&1 || true
+    echo "✅ Firewall ports opened (22, 25, 80, 443)"
+else
+    echo "ℹ️  No active firewall detected (or not running as root)"
+fi
 echo ""
 
 # ============================================

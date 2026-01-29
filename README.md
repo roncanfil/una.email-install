@@ -17,15 +17,6 @@ UNA Email is a self-hosted email solution for families and small teams. Run your
 - Ask them to "remove the SMTP block on port 25"
 - After approval, do a full Stop/Start from their control panel
 
-**Configure firewall:**
-```bash
-# Ubuntu/Debian
-sudo ufw allow 22/tcp && sudo ufw allow 25/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw enable
-
-# CentOS/AlmaLinux
-sudo firewall-cmd --add-port={22,25,80,443}/tcp --permanent && sudo firewall-cmd --reload
-```
-
 ### 2. Install UNA Email
 
 ```bash
@@ -34,10 +25,12 @@ cd una.email-install
 ./install.sh
 ```
 
-The installer will ask for:
-- Your domain (e.g., `example.com`)
-- Your email (for SSL certificate notifications)
-- Database password (auto-generated, you can accept or change)
+The installer will:
+- Configure firewall automatically (if firewalld or ufw is active)
+- Ask for your domain, email, and database password
+- Pull and start all Docker containers
+- Set up the database
+- Request SSL certificate
 
 ### 3. Configure DNS
 
