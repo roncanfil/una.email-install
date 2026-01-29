@@ -161,8 +161,8 @@ echo ""
 echo "Step 7: Database Setup"
 echo "----------------------"
 
-echo "🗄️  Running database migrations..."
-docker compose exec -T web npx prisma migrate deploy
+echo "🗄️  Creating database schema..."
+docker compose exec -T web npx prisma db push --accept-data-loss
 
 echo "✅ Database ready"
 echo ""
