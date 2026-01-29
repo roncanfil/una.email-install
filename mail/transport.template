@@ -1,6 +1,0 @@
-# Transport mappings for UNA email system
-# Route domain traffic to una-email-handler pipe transport
-
-# Handle the main domain and all subdomains
-${DOMAIN}          una-email-handler:
-.${DOMAIN}         una-email-handler:

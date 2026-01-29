@@ -8,35 +8,48 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-una_email_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: unless-stopped
     networks:
       - una-network
+
+  rspamd:
+    image: rspamd/rspamd:latest
+    container_name: una-rspamd
+    volumes:
+      - rspamd_data:/var/lib/rspamd
+      - ./rspamd/local.d:/etc/rspamd/local.d:ro
+    ports:
+      - "11334:11334"
+    restart: unless-stopped
+    networks:
+      - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postfix:
     image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/mail:${IMAGE_TAG:-latest}
     container_name: una-postfix
     environment:
-      POSTFIX_HOSTNAME: mail.${DOMAIN}
+      DOMAIN: ${DOMAIN}
       DB_HOST: postgres
-      # Do not set DB_PORT to avoid accidental non-numeric strings; wrapper defaults to 5432
       DB_NAME: una_email
       DB_USER: una_email
       DB_PASSWORD: ${DB_PASSWORD}
-      DOMAIN: ${DOMAIN}
-      SKIP_CONFIG: "true"
+      ATTACHMENTS_PATH: /data/attachments
+      # Rspamd milter configuration
+      POSTFIX_smtpd_milters: inet:rspamd:11332
+      POSTFIX_non_smtpd_milters: inet:rspamd:11332
     volumes:
-      - ./mail/main.cf.template:/etc/postfix/main.cf.template:Z
-      - ./mail/master.cf:/etc/postfix/master.cf:Z
-      - ./mail/transport.template:/etc/postfix/transport.template:Z
-      - ./mail/entrypoint.sh:/app/entrypoint.sh:Z
-      - ./mail/deliver-to-maildrop:/app/deliver-to-maildrop:Z
       - ./letsencrypt/etc:/etc/letsencrypt
+      - attachments_data:/data/attachments
     ports:
       - "25:25"
     depends_on:
       - postgres
+      - rspamd
     restart: unless-stopped
     networks:
       - una-network
@@ -88,8 +101,9 @@ services:
       DOMAIN: ${DOMAIN:-mydomain.local}
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
+      ATTACHMENTS_PATH: /data/attachments
     volumes:
-      - ./.env:/app/.env:ro
+      - attachments_data:/data/attachments
     depends_on:
       - postgres
     restart: unless-stopped
@@ -98,6 +112,8 @@ services:
 
 volumes:
   postgres_data:
+  attachments_data:
+  rspamd_data:
 
 networks:
   una-network:
