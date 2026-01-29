@@ -90,7 +90,7 @@ fi
 echo "✅ Domain: $DOMAIN"
 echo ""
 
-read -p "Mail subdomain [mail]: " MAIL_SUBDOMAIN
+read -p "Subdomain for web access [mail]: " MAIL_SUBDOMAIN
 MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-mail}"
 echo "✅ Web UI will be at: https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
