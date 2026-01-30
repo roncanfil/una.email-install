@@ -70,9 +70,14 @@ if [ "$FORCE_RENEW" = true ] || [ "$CERT_EXPIRED" = true ]; then
     fi
     echo ""
 
-    # Step 1: Delete old certificate
+    # Step 1: Delete old certificate and clean up any leftover directories
     echo "📋 Step 1: Removing old certificate..."
-    docker compose run --rm certbot delete --cert-name $FULL_HOSTNAME --non-interactive || true
+    docker compose run --rm certbot delete --cert-name $FULL_HOSTNAME --non-interactive 2>/dev/null || true
+
+    # Also remove any leftover directories that might cause "live directory exists" error
+    rm -rf ./letsencrypt/etc/live/$FULL_HOSTNAME 2>/dev/null || true
+    rm -rf ./letsencrypt/etc/archive/$FULL_HOSTNAME 2>/dev/null || true
+    rm -f ./letsencrypt/etc/renewal/$FULL_HOSTNAME.conf 2>/dev/null || true
 
     echo ""
     echo "📋 Step 2: Obtaining new certificate..."
