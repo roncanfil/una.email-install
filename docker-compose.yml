@@ -34,6 +34,7 @@ services:
     container_name: una-postfix
     environment:
       DOMAIN: ${DOMAIN}
+      MAIL_SUBDOMAIN: ${MAIL_SUBDOMAIN:-mail}
       DB_HOST: postgres
       DB_NAME: una_email
       DB_USER: una_email
