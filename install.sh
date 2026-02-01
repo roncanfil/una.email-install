@@ -90,8 +90,8 @@ fi
 echo "✅ Domain: $DOMAIN"
 echo ""
 
-read -p "Subdomain for web access [mail]: " MAIL_SUBDOMAIN
-MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-mail}"
+read -p "Subdomain for web access [webmail]: " MAIL_SUBDOMAIN
+MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-webmail}"
 echo "✅ Web UI will be at: https://$MAIL_SUBDOMAIN.$DOMAIN"
 echo ""
 
@@ -206,6 +206,9 @@ else
     DKIM_RECORD="v=DKIM1; k=rsa; p=<run: docker compose exec rspamd openssl rsa -in /var/lib/rspamd/dkim/una.$DOMAIN.key -pubout 2>/dev/null | grep -v '^-' | tr -d '\\n'>"
     echo "⚠️  DKIM key generated but could not extract public key automatically"
 fi
+
+# Create symlink for mail. subdomain DKIM (for bounce messages from mail.$DOMAIN)
+docker compose exec -T rspamd ln -sf /var/lib/rspamd/dkim/una.$DOMAIN.key /var/lib/rspamd/dkim/una.mail.$DOMAIN.key 2>/dev/null || true
 echo ""
 
 # ============================================
@@ -231,30 +234,32 @@ Tells email servers where to deliver mail for your domain.
 
 | Type | Host | Value | Priority |
 |------|------|-------|----------|
-| MX | @ | $MAIL_SUBDOMAIN.$DOMAIN | 10 |
+| MX | @ | mail.$DOMAIN | 10 |
 
-### 2. A Record (Required)
-Points your mail server hostname to your server.
+### 2. A Records (Required)
+Point your hostnames to your server.
 
-| Type | Host | Value |
-|------|------|-------|
-| A | $MAIL_SUBDOMAIN | $SERVER_IP |
+| Type | Host | Value | Purpose |
+|------|------|-------|---------|
+| A | mail | $SERVER_IP | Mail server (SMTP) |
+| A | $MAIL_SUBDOMAIN | $SERVER_IP | Web interface |
 
 ### 3. SPF Record (Required)
 Tells receivers which servers can send email for your domain.
 
 | Type | Host | Value |
 |------|------|-------|
-| TXT | @ | v=spf1 a:$MAIL_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all |
+| TXT | @ | v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all |
 
-### 4. DKIM Record (Required)
-Cryptographic signature for email authentication.
+### 4. DKIM Records (Required)
+Cryptographic signature for email authentication. You need TWO DKIM records:
 
 | Type | Host | Value |
 |------|------|-------|
 | TXT | una._domainkey | $DKIM_RECORD |
+| TXT | una._domainkey.mail | $DKIM_RECORD |
 
-**Note:** The DKIM value above is long. Copy it exactly as shown (no line breaks).
+**Note:** Both records use the same value. The second one is for bounce messages sent from mail.$DOMAIN.
 
 ### 5. DMARC Record (Recommended)
 Policy for handling authentication failures.
@@ -268,7 +273,7 @@ Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT y
 
 | Server IP | PTR Value |
 |-----------|-----------|
-| $SERVER_IP | $MAIL_SUBDOMAIN.$DOMAIN |
+| $SERVER_IP | mail.$DOMAIN |
 
 ---
 
@@ -282,14 +287,15 @@ dig MX $DOMAIN +short
 \`\`\`
 **Expected output:**
 \`\`\`
-10 $MAIL_SUBDOMAIN.$DOMAIN.
+10 mail.$DOMAIN.
 \`\`\`
 
 \`\`\`bash
-# Check A record
+# Check A records
+dig A mail.$DOMAIN +short
 dig A $MAIL_SUBDOMAIN.$DOMAIN +short
 \`\`\`
-**Expected output:**
+**Expected output (both should return):**
 \`\`\`
 $SERVER_IP
 \`\`\`
@@ -300,7 +306,7 @@ dig TXT $DOMAIN +short | grep spf
 \`\`\`
 **Expected output:**
 \`\`\`
-"v=spf1 a:$MAIL_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"
+"v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all"
 \`\`\`
 
 \`\`\`bash
@@ -351,7 +357,7 @@ You should see the UNA Email login page with a valid SSL certificate (green padl
 ## Your Installation Details
 
 - **Web Interface:** https://$MAIL_SUBDOMAIN.$DOMAIN
-- **SMTP Server:** $MAIL_SUBDOMAIN.$DOMAIN (port 25)
+- **SMTP Server:** mail.$DOMAIN (port 25)
 - **Server IP:** $SERVER_IP
 
 ---
