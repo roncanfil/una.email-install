@@ -188,28 +188,23 @@ echo "🔑 Creating DKIM signing key..."
 # Create the DKIM directory if it doesn't exist
 docker compose exec -T rspamd mkdir -p /var/lib/rspamd/dkim
 
-# Generate the DKIM key and capture output
-DKIM_OUTPUT=$(docker compose exec -T rspamd rspamadm dkim_keygen -s una -d $DOMAIN -k /var/lib/rspamd/dkim/una.$DOMAIN.key 2>&1)
+# Generate the DKIM key (rspamadm creates the key in the correct format for rspamd)
+docker compose exec -T rspamd rspamadm dkim_keygen -s una -d $DOMAIN -k /var/lib/rspamd/dkim/una.$DOMAIN.key > /dev/null 2>&1
 
 # Set proper permissions on the private key
 docker compose exec -T rspamd chmod 640 /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
 docker compose exec -T rspamd chown _rspamd:_rspamd /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
 
-# Extract the DKIM public key value from the output
-# The output format is: una._domainkey IN TXT ( "v=DKIM1; k=rsa; " "p=MII..." ) ;
-# We need to extract all quoted parts and combine them with spaces
-DKIM_RECORD=$(echo "$DKIM_OUTPUT" | grep -oE '"[^"]*"' | tr '\n' ' ' | tr -d '"' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | sed 's/  */ /g')
+# Extract the public key directly from the private key file using openssl
+# This is more reliable than parsing rspamadm output
+DKIM_PUBKEY=$(docker compose exec -T rspamd openssl rsa -in /var/lib/rspamd/dkim/una.$DOMAIN.key -pubout 2>/dev/null | grep -v "^-" | tr -d '\n')
 
-if [ -z "$DKIM_RECORD" ]; then
-    # Fallback: try extracting from v=DKIM1 onwards
-    DKIM_RECORD=$(echo "$DKIM_OUTPUT" | tr '\n' ' ' | grep -oE 'v=DKIM1[^)]+' | tr -d '"' | sed 's/  */ /g')
-fi
-
-if [ -z "$DKIM_RECORD" ]; then
-    DKIM_RECORD="v=DKIM1; k=rsa; p=<run: docker compose exec rspamd cat /var/lib/rspamd/dkim/una.$DOMAIN.key.pub>"
-    echo "⚠️  DKIM key generated but could not extract record automatically"
-else
+if [ -n "$DKIM_PUBKEY" ]; then
+    DKIM_RECORD="v=DKIM1; k=rsa; p=$DKIM_PUBKEY"
     echo "✅ DKIM key generated"
+else
+    DKIM_RECORD="v=DKIM1; k=rsa; p=<run: docker compose exec rspamd openssl rsa -in /var/lib/rspamd/dkim/una.$DOMAIN.key -pubout 2>/dev/null | grep -v '^-' | tr -d '\\n'>"
+    echo "⚠️  DKIM key generated but could not extract public key automatically"
 fi
 echo ""
 
