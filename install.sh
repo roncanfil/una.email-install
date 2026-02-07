@@ -227,7 +227,7 @@ Server IP: $SERVER_IP
 
 ## Step 1: Add DNS Records
 
-Add these records at your domain registrar (Cloudflare, Namecheap, GoDaddy, etc.)
+Go to your domain registrar (Cloudflare, Namecheap, GoDaddy, etc.) and add these DNS records:
 
 ### 1. MX Record
 Tells email servers where to deliver mail for your domain.
@@ -236,13 +236,22 @@ Tells email servers where to deliver mail for your domain.
 |------|------|-------|----------|
 | MX | @ | mail.$DOMAIN | 10 |
 
-### 2. A Records
-Point your hostnames to your server.
+### 2. A Record$(if [ "$MAIL_SUBDOMAIN" != "mail" ]; then echo 's'; fi)
+Point your hostname$(if [ "$MAIL_SUBDOMAIN" != "mail" ]; then echo 's'; fi) to your server.
 
-| Type | Host | Value | Purpose |
-|------|------|-------|---------|
-| A | mail | $SERVER_IP | Mail server (SMTP) |
-| A | $MAIL_SUBDOMAIN | $SERVER_IP | Web interface |
+$(if [ "$MAIL_SUBDOMAIN" = "mail" ]; then
+echo "| Type | Host | Value |"
+echo "|------|------|-------|"
+echo "| A | mail | $SERVER_IP |"
+echo ""
+echo "Since your web interface and mail server share the same subdomain (mail.$DOMAIN),"
+echo "only one A record is needed. It handles both SMTP (port 25) and HTTPS (port 443)."
+else
+echo "| Type | Host | Value | Purpose |"
+echo "|------|------|-------|---------|"
+echo "| A | mail | $SERVER_IP | Mail server (SMTP) |"
+echo "| A | $MAIL_SUBDOMAIN | $SERVER_IP | Web interface |"
+fi)
 
 ### 3. SPF Record
 Tells receivers which servers can send email for your domain.
@@ -268,16 +277,31 @@ Policy for handling authentication failures.
 |------|------|-------|
 | TXT | _dmarc | v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100 |
 
-### 6. Reverse DNS / PTR Record
-Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT your domain registrar.
+---
+
+## Step 2: Set Up Reverse DNS (PTR Record)
+
+Reverse DNS maps your server's IP address back to your hostname. This is essential for
+email deliverability — most mail servers will reject or flag emails from servers without
+a valid PTR record.
+
+**Important:** This is NOT configured at your domain registrar. You must set it up at your
+VPS or hosting provider's control panel.
 
 | Server IP | PTR Value |
 |-----------|-----------|
 | $SERVER_IP | mail.$DOMAIN |
 
+### How to set this up:
+- **Vultr:** Server Settings → IPv4 → click "Reverse DNS" → enter \`mail.$DOMAIN\`
+- **DigitalOcean:** Rename your Droplet to \`mail.$DOMAIN\` (PTR is set automatically from the hostname)
+- **Hetzner:** Server → Networking → click the IP address → set Reverse DNS
+- **Linode/Akamai:** Network tab → IP Addresses → Edit RDNS
+- **Other providers:** Look for "Reverse DNS", "PTR Record", or "RDNS" in your server's network settings. Some providers require you to open a support ticket to configure this.
+
 ---
 
-## Step 2: Verify DNS Records
+## Step 3: Verify DNS Records
 
 After adding DNS records, wait 5-30 minutes for propagation, then verify:
 
@@ -290,15 +314,26 @@ dig MX $DOMAIN +short
 10 mail.$DOMAIN.
 \`\`\`
 
-\`\`\`bash
-# Check A records
-dig A mail.$DOMAIN +short
-dig A $MAIL_SUBDOMAIN.$DOMAIN +short
-\`\`\`
-**Expected output (both should return):**
-\`\`\`
-$SERVER_IP
-\`\`\`
+$(if [ "$MAIL_SUBDOMAIN" = "mail" ]; then
+echo '\`\`\`bash'
+echo "# Check A record"
+echo "dig A mail.$DOMAIN +short"
+echo '\`\`\`'
+echo "**Expected output:**"
+echo '\`\`\`'
+echo "$SERVER_IP"
+echo '\`\`\`'
+else
+echo '\`\`\`bash'
+echo "# Check A records"
+echo "dig A mail.$DOMAIN +short"
+echo "dig A $MAIL_SUBDOMAIN.$DOMAIN +short"
+echo '\`\`\`'
+echo "**Expected output (both should return):**"
+echo '\`\`\`'
+echo "$SERVER_IP"
+echo '\`\`\`'
+fi)
 
 \`\`\`bash
 # Check SPF record
@@ -315,53 +350,78 @@ dig TXT una._domainkey.$DOMAIN +short
 \`\`\`
 **Expected output:** Should return your DKIM public key starting with \`"v=DKIM1; k=rsa; p=MIG...\`
 
+\`\`\`bash
+# Check PTR record
+dig -x $SERVER_IP +short
+\`\`\`
+**Expected output:**
+\`\`\`
+mail.$DOMAIN.
+\`\`\`
+
 ---
 
-## Step 3: Get SSL Certificate
+## Step 4: Get SSL Certificate
 
-Once DNS is verified, obtain your SSL certificate:
+Run the following command to obtain a free SSL certificate from Let's Encrypt:
 
 \`\`\`bash
 ./renew-ssl.sh
 \`\`\`
 
-The script will automatically detect that no certificate exists and obtain a new one.
+This script will:
+- Obtain an SSL certificate for \`$MAIL_SUBDOMAIN.$DOMAIN\`
+- Configure HTTPS for the web interface (port 443)
+- Configure TLS encryption for the mail server (SMTP)
+- Display your DANE/TLSA hash for the next step
+
+If a certificate already exists, it will attempt to renew it instead.
+
+**Note:** DNS records must be properly configured and propagated before running this script,
+otherwise the certificate request will fail.
 
 ---
 
-## Step 4: Add DANE/TLSA DNS Record
+## Step 5: Add DANE/TLSA DNS Record
 
-After obtaining your SSL certificate, the \`renew-ssl.sh\` script displays your TLSA hash.
-You can also generate it manually:
+DANE adds an extra layer of security by publishing your mail server's public key fingerprint
+in DNS. This allows other mail servers to verify your certificate directly through DNS,
+preventing man-in-the-middle attacks.
 
-\`\`\`bash
-openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -outform DER | sha256sum
-\`\`\`
-
-Add this DNS record:
+After running \`./renew-ssl.sh\` in the previous step, the script displayed your TLSA hash.
+Now go back to your domain registrar and add this DNS record:
 
 | Type | Host | Value |
 |------|------|-------|
-| TLSA | _25._tcp.mail | 3 1 1 <hash-from-command-above> |
+| TLSA | _25._tcp.mail | 3 1 1 <hash-displayed-by-renew-ssl.sh> |
 
-**Note:** The TLSA record must be updated each time the SSL certificate renews.
-The \`renew-ssl.sh\` script will display the current hash after each renewal.
+You can retrieve the hash at any time by running:
+
+\`\`\`bash
+openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum
+\`\`\`
+
+**Note:** The TLSA hash is based on your certificate's public key, which stays the same
+across certificate renewals. You only need to update this DNS record if you perform
+a full reinstallation.
 
 ---
 
-## Step 5: Access Your Email
+## Step 6: Access Your Email
 
 Open your browser and go to:
 
 **https://$MAIL_SUBDOMAIN.$DOMAIN**
 
 You should see the UNA Email login page with a valid SSL certificate (green padlock).
+Create your account, then go to **Settings** and create your first email address — you'll
+need it for the next step.
 
 ---
 
-## Step 6: Test Your Email Deliverability
+## Step 7: Test Your Email Deliverability
 
-Before sending important emails, verify everything is configured correctly:
+Now that you have an email address, verify that everything is configured correctly:
 
 1. Go to **https://mail-tester.com/**
 2. You'll see a unique email address like \`test-abc123@srv1.mail-tester.com\`

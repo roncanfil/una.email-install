@@ -59,7 +59,7 @@ if [ "$CERT_EXISTS" = false ]; then
     rm -rf ./letsencrypt/etc/archive/$FULL_HOSTNAME 2>/dev/null || true
     rm -f ./letsencrypt/etc/renewal/$FULL_HOSTNAME.conf 2>/dev/null || true
 
-    if ! docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos -d $FULL_HOSTNAME; then
+    if ! docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot --register-unsafely-without-email --agree-tos --reuse-key -d $FULL_HOSTNAME; then
         echo "❌ SSL certificate request failed"
         echo "ℹ️  Common issues:"
         echo "   - DNS not pointing to this server"
@@ -97,7 +97,7 @@ fi
 # Generate DANE/TLSA record (if certificate exists)
 CERT_PATH="./letsencrypt/etc/live/${FULL_HOSTNAME}/cert.pem"
 if [ -f "$CERT_PATH" ]; then
-    TLSA_HASH=$(openssl x509 -in "$CERT_PATH" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+    TLSA_HASH=$(openssl x509 -in "$CERT_PATH" -noout -pubkey 2>/dev/null | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
     if [ -n "$TLSA_HASH" ] && [ "$TLSA_HASH" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
         echo ""
         echo "📋 DANE/TLSA Record:"
@@ -107,6 +107,8 @@ if [ -f "$CERT_PATH" ]; then
         echo "   Host:  _25._tcp.mail.${DOMAIN}"
         echo "   Value: 3 1 1 ${TLSA_HASH}"
         echo ""
-        echo "   Note: Update this record each time the SSL certificate renews."
+        echo "   This hash is based on your certificate's public key."
+        echo "   It stays the same across renewals (--reuse-key is enabled)."
+        echo "   You only need to update this DNS record after a full reinstallation."
     fi
 fi
