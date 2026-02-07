@@ -229,14 +229,14 @@ Server IP: $SERVER_IP
 
 Add these records at your domain registrar (Cloudflare, Namecheap, GoDaddy, etc.)
 
-### 1. MX Record (Required)
+### 1. MX Record
 Tells email servers where to deliver mail for your domain.
 
 | Type | Host | Value | Priority |
 |------|------|-------|----------|
 | MX | @ | mail.$DOMAIN | 10 |
 
-### 2. A Records (Required)
+### 2. A Records
 Point your hostnames to your server.
 
 | Type | Host | Value | Purpose |
@@ -244,14 +244,14 @@ Point your hostnames to your server.
 | A | mail | $SERVER_IP | Mail server (SMTP) |
 | A | $MAIL_SUBDOMAIN | $SERVER_IP | Web interface |
 
-### 3. SPF Record (Required)
+### 3. SPF Record
 Tells receivers which servers can send email for your domain.
 
 | Type | Host | Value |
 |------|------|-------|
 | TXT | @ | v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all |
 
-### 4. DKIM Records (Required)
+### 4. DKIM Records
 Cryptographic signature for email authentication. You need TWO DKIM records:
 
 | Type | Host | Value |
@@ -261,36 +261,19 @@ Cryptographic signature for email authentication. You need TWO DKIM records:
 
 **Note:** Both records use the same value. The second one is for bounce messages sent from mail.$DOMAIN.
 
-### 5. DMARC Record (Recommended)
+### 5. DMARC Record
 Policy for handling authentication failures.
 
 | Type | Host | Value |
 |------|------|-------|
 | TXT | _dmarc | v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100 |
 
-### 6. Reverse DNS / PTR Record (Required)
+### 6. Reverse DNS / PTR Record
 Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT your domain registrar.
 
 | Server IP | PTR Value |
 |-----------|-----------|
 | $SERVER_IP | mail.$DOMAIN |
-
-### 7. DANE/TLSA Record (Optional — Enhanced Security)
-After obtaining your SSL certificate (Step 3), the \`renew-ssl.sh\` script will display your TLSA hash.
-You can also generate it manually:
-
-\`\`\`bash
-openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -outform DER | sha256sum
-\`\`\`
-
-Then add this DNS record:
-
-| Type | Host | Value |
-|------|------|-------|
-| TLSA | _25._tcp.mail | 3 1 1 <hash-from-command-above> |
-
-**Note:** The TLSA record must be updated each time the SSL certificate renews.
-The \`renew-ssl.sh\` script will display the current hash after each renewal.
 
 ---
 
@@ -339,29 +322,34 @@ dig TXT una._domainkey.$DOMAIN +short
 Once DNS is verified, obtain your SSL certificate:
 
 \`\`\`bash
-./renew-ssl.sh --force
+./renew-ssl.sh
 \`\`\`
 
-**Expected output:**
-\`\`\`
-🔄 Force renewal requested...
-
-📋 Step 1: Removing old certificate...
-📋 Step 2: Obtaining new certificate...
-Saving debug log to /var/log/letsencrypt/letsencrypt.log
-...
-Successfully received certificate.
-
-Syncing certificate to Postfix...
-Restarting Nginx to apply new certificate...
-
-✅ SSL certificate force renewal complete!
-🌐 Your website should now be accessible at https://$MAIL_SUBDOMAIN.$DOMAIN
-\`\`\`
+The script will automatically detect that no certificate exists and obtain a new one.
 
 ---
 
-## Step 4: Access Your Email
+## Step 4: Add DANE/TLSA DNS Record
+
+After obtaining your SSL certificate, the \`renew-ssl.sh\` script displays your TLSA hash.
+You can also generate it manually:
+
+\`\`\`bash
+openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -outform DER | sha256sum
+\`\`\`
+
+Add this DNS record:
+
+| Type | Host | Value |
+|------|------|-------|
+| TLSA | _25._tcp.mail | 3 1 1 <hash-from-command-above> |
+
+**Note:** The TLSA record must be updated each time the SSL certificate renews.
+The \`renew-ssl.sh\` script will display the current hash after each renewal.
+
+---
+
+## Step 5: Access Your Email
 
 Open your browser and go to:
 
@@ -371,7 +359,7 @@ You should see the UNA Email login page with a valid SSL certificate (green padl
 
 ---
 
-## Step 5: Test Your Email Deliverability
+## Step 6: Test Your Email Deliverability
 
 Before sending important emails, verify everything is configured correctly:
 
@@ -420,21 +408,9 @@ then again after making any DNS changes.
 ./update.sh
 \`\`\`
 
-**Renew SSL manually (runs automatically via cron):**
+**Renew SSL manually:**
 \`\`\`bash
 ./renew-ssl.sh
-\`\`\`
-
-**View logs:**
-\`\`\`bash
-docker compose logs -f postfix    # Mail server
-docker compose logs -f web        # Web interface
-docker compose logs -f rspamd     # Spam filter
-\`\`\`
-
-**Check service status:**
-\`\`\`bash
-docker compose ps
 \`\`\`
 
 ---
@@ -461,12 +437,9 @@ echo "📄 Your personalized setup guide has been created:"
 echo ""
 echo "   cat YOUR_SETUP.md"
 echo ""
-echo "   Follow the 5 steps in the guide to finish setup."
+echo "   Follow the steps in the guide to finish setup."
 echo "   It only takes a few minutes!"
 echo ""
 echo "🌐 Once complete, access your email at:"
 echo "   https://$MAIL_SUBDOMAIN.$DOMAIN"
-echo ""
-echo "📧 Test your deliverability at: https://mail-tester.com/"
-echo "   (Send an email to their address and check your score)"
 echo ""
