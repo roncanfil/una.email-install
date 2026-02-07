@@ -101,16 +101,33 @@ else
     echo "Attempting to renew SSL certificate (normal renewal)..."
     if docker compose run --rm certbot renew; then
         echo "✅ Certificate renewal check completed"
-        
+
         # Only sync and restart if certbot actually renewed something
         # certbot renew returns 0 even if nothing was renewed, so we check the exit code
         sync_to_postfix
         restart_nginx
-        
+
         echo "✅ SSL renewal process complete."
     else
         echo "⚠️  Certificate renewal failed"
         echo "ℹ️  If your certificate is expired, run: ./renew-ssl.sh --force"
         exit 1
+    fi
+fi
+
+# Generate DANE/TLSA record (if certificate exists)
+CERT_PATH="./letsencrypt/etc/live/${FULL_HOSTNAME}/cert.pem"
+if [ -f "$CERT_PATH" ]; then
+    TLSA_HASH=$(openssl x509 -in "$CERT_PATH" -outform DER 2>/dev/null | sha256sum | awk '{print $1}')
+    if [ -n "$TLSA_HASH" ] && [ "$TLSA_HASH" != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]; then
+        echo ""
+        echo "📋 DANE/TLSA Record (optional, for enhanced security):"
+        echo "   Add this DNS record to enable DANE:"
+        echo ""
+        echo "   Type:  TLSA"
+        echo "   Host:  _25._tcp.mail.${DOMAIN}"
+        echo "   Value: 3 1 1 ${TLSA_HASH}"
+        echo ""
+        echo "   Note: Update this record each time the SSL certificate renews."
     fi
 fi

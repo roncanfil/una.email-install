@@ -275,6 +275,23 @@ Set this in your VPS provider's control panel (Vultr, DigitalOcean, etc.), NOT y
 |-----------|-----------|
 | $SERVER_IP | mail.$DOMAIN |
 
+### 7. DANE/TLSA Record (Optional — Enhanced Security)
+After obtaining your SSL certificate (Step 3), the \`renew-ssl.sh\` script will display your TLSA hash.
+You can also generate it manually:
+
+\`\`\`bash
+openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -outform DER | sha256sum
+\`\`\`
+
+Then add this DNS record:
+
+| Type | Host | Value |
+|------|------|-------|
+| TLSA | _25._tcp.mail | 3 1 1 <hash-from-command-above> |
+
+**Note:** The TLSA record must be updated each time the SSL certificate renews.
+The \`renew-ssl.sh\` script will display the current hash after each renewal.
+
 ---
 
 ## Step 2: Verify DNS Records
@@ -354,6 +371,40 @@ You should see the UNA Email login page with a valid SSL certificate (green padl
 
 ---
 
+## Step 5: Test Your Email Deliverability
+
+Before sending important emails, verify everything is configured correctly:
+
+1. Go to **https://mail-tester.com/**
+2. You'll see a unique email address like \`test-abc123@srv1.mail-tester.com\`
+3. Copy that address
+4. From your UNA Email web interface, compose a new email:
+   - **To:** paste the mail-tester.com address
+   - **Subject:** Write a short sentence (e.g., "Testing my new email server")
+   - **Body:** Write at least 2-3 sentences of normal text (avoid spammy words)
+5. Send the email
+6. Go back to mail-tester.com and click **"Then check your score"**
+7. You should see a score out of 10
+
+### What to look for:
+- **10/10**: Perfect! Your server is fully configured
+- **SPF**: Should show green — verifies your server is authorized to send
+- **DKIM**: Should show green — verifies your email signature
+- **DMARC**: Should show green — verifies your domain policy
+- **Blacklists**: Should show green — your IP is not blacklisted
+- **PTR Record**: Should show green — reverse DNS is configured
+
+### If your score is below 8:
+- Check which items are marked with red or yellow
+- Most issues are DNS records that need to be added or corrected
+- PTR record issues must be fixed at your VPS provider, not your domain registrar
+- Wait 24 hours after DNS changes and test again
+
+**Tip:** You get 3 free tests per day. Test once after initial setup,
+then again after making any DNS changes.
+
+---
+
 ## Your Installation Details
 
 - **Web Interface:** https://$MAIL_SUBDOMAIN.$DOMAIN
@@ -410,9 +461,12 @@ echo "📄 Your personalized setup guide has been created:"
 echo ""
 echo "   cat YOUR_SETUP.md"
 echo ""
-echo "   Follow the 4 steps in the guide to finish setup."
+echo "   Follow the 5 steps in the guide to finish setup."
 echo "   It only takes a few minutes!"
 echo ""
 echo "🌐 Once complete, access your email at:"
 echo "   https://$MAIL_SUBDOMAIN.$DOMAIN"
+echo ""
+echo "📧 Test your deliverability at: https://mail-tester.com/"
+echo "   (Send an email to their address and check your score)"
 echo ""

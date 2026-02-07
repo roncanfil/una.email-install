@@ -1,0 +1,6 @@
+# Whitelisted IPs for greylisting
+# Add IPs of mail servers that should not be greylisted
+# Format: one IP or CIDR per line
+# Example:
+# 74.125.0.0/16  # Google
+# 40.92.0.0/14   # Microsoft
