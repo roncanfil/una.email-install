@@ -1,14 +1,53 @@
 services:
+  # Blocks `docker compose up` from starting Postgres 18 against an empty
+  # postgres_data_18 while a populated Postgres 15 volume still exists.
+  # Fresh installs and already-migrated stacks pass; everyone else is told
+  # to run scripts/upgrade-postgres.sh first.
+  pg-guard:
+    image: alpine:3.21
+    container_name: una-pg-guard
+    volumes:
+      - postgres_data:/old:ro
+      - postgres_data_18:/new:ro
+    restart: "no"
+    networks:
+      - una-network
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /old/PG_VERSION ]; then
+          exit 0
+        fi
+        if [ -f /new/18/docker/PG_VERSION ]; then
+          exit 0
+        fi
+        cat >&2 <<'EOF'
+        An existing Postgres 15 data volume was found and the Postgres 18 volume is empty.
+        Run ./scripts/upgrade-postgres.sh from the repo root, then docker compose up -d again.
+        To roll back, point the postgres service at postgres_data:/var/lib/postgresql/data
+        and image postgres:15-alpine.
+        EOF
+        exit 1
+
   postgres:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: una-postgres
     environment:
       POSTGRES_DB: una_email
       POSTGRES_USER: una_email
       POSTGRES_PASSWORD: ${DB_PASSWORD:-una_email_password}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18 moved the image's declared volume from
+      # /var/lib/postgresql/data to /var/lib/postgresql
+      # (PGDATA is now /var/lib/postgresql/18/docker). Upgrading from 15 has no
+      # in-place path, so this is a new volume populated by
+      # scripts/upgrade-postgres.sh; postgres_data is kept for rollback.
+      - postgres_data_18:/var/lib/postgresql
     restart: unless-stopped
+    depends_on:
+      pg-guard:
+        condition: service_completed_successfully
     networks:
       - una-network
     healthcheck:
@@ -46,7 +85,10 @@ services:
     networks:
       - una-network
     healthcheck:
-      test: ["CMD", "clamdcheck"]
+      # The official image ships clamdcheck.sh on PATH; plain `clamdcheck` does
+      # not exist, so the old test failed on every interval and the container
+      # never reported healthy.
+      test: ["CMD", "clamdcheck.sh"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -58,13 +100,23 @@ services:
         max-file: "3"
 
   rspamd:
-    image: rspamd/rspamd:latest
+    # Pinned: 4.1 is the version Rspamd config in rspamd/local.d was proven
+    # against. Do not float to latest.
+    image: rspamd/rspamd:4.1
     container_name: una-rspamd
+    environment:
+      # Read by rspamd/local.d/worker-controller.inc as `env.controller_password`
+      # and hashed at startup, so the controller (and its /learnspam and
+      # /learnham endpoints) stop accepting the image's default "q1".
+      RSPAMD_controller_password: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
     volumes:
       - rspamd_data:/var/lib/rspamd
       - ./rspamd/local.d:/etc/rspamd/local.d:ro
     ports:
-      - "11334:11334"
+      # Localhost only. The web container reaches the controller over the
+      # compose network at http://rspamd:11334 regardless; nothing outside the
+      # host needs it.
+      - "127.0.0.1:11334:11334"
     restart: unless-stopped
     depends_on:
       - redis
@@ -84,13 +136,21 @@ services:
       DOMAIN: ${DOMAIN}
       MAIL_SUBDOMAIN: ${MAIL_SUBDOMAIN:-mail}
       DB_HOST: postgres
+      DB_PORT: 5432
       DB_NAME: una_email
       DB_USER: una_email
       DB_PASSWORD: ${DB_PASSWORD}
+      DATABASE_URL: postgresql://una_email:${DB_PASSWORD}@postgres:5432/una_email
+      # Without this the send API listens on 3002 and MAIL_API_URL
+      # (http://postfix:3000) cannot reach it.
+      API_PORT: 3000
       ATTACHMENTS_PATH: /data/attachments
       # Rspamd milter configuration
       POSTFIX_smtpd_milters: inet:rspamd:11332
       POSTFIX_non_smtpd_milters: inet:rspamd:11332
+      POSTFIX_milter_protocol: "6"
+      # accept, not tempfail: if Rspamd is down, mail still flows.
+      POSTFIX_milter_default_action: accept
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - attachments_data:/data/attachments
@@ -109,7 +169,11 @@ services:
         max-file: "3"
 
   nginx:
-    image: nginx:latest
+    # Pinned to 1.28.x, not latest. Debian-based, NOT -alpine:
+    # nginx/entrypoint.sh needs bash and openssl to mint the first-boot
+    # dummy certificate, and nginx:1.28-alpine ships neither, so alpine
+    # would fail to start on every fresh install before certbot runs.
+    image: nginx:1.28
     container_name: una-nginx
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template
@@ -135,7 +199,7 @@ services:
         max-file: "3"
 
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v5.8.0
     container_name: una-certbot
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
@@ -152,10 +216,17 @@ services:
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
       ATTACHMENTS_PATH: /data/attachments
+      # Sending goes through the Postfix container's API, not SMTP.
+      MAIL_API_URL: http://postfix:3000
+      # Teaching the Bayes classifier from "Report spam" / "Not spam".
+      RSPAMD_URL: http://rspamd:11334
+      RSPAMD_PASSWORD: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
     volumes:
       - attachments_data:/data/attachments
     depends_on:
       - postgres
+      - postfix
+      - rspamd
     restart: unless-stopped
     networks:
       - una-network
@@ -167,7 +238,8 @@ services:
       start_period: 30s
 
 volumes:
-  postgres_data:
+  postgres_data:      # PostgreSQL 15 data, retained for rollback
+  postgres_data_18:
   attachments_data:
   rspamd_data:
   redis_data:
