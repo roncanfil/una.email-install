@@ -108,8 +108,13 @@ echo ""
 # Compose normalises the project name, so ask Compose rather than guessing at
 # the directory name. This also validates the compose file before we touch
 # anything.
+# `| head -1` is deliberately NOT used here: under `set -o pipefail` head exits
+# after the first line, sed is killed by SIGPIPE, and the whole pipeline reports
+# 141 -- which aborts this script under `set -e` before it prints anything at
+# all. It races, so it looks fine on macOS and fails on Linux, which is every
+# server this runs on. Let sed stop by itself instead.
 PROJECT="$(docker compose config --format json 2>/dev/null \
-    | sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' | head -1)"
+    | sed -n '/"name":/{s/.*"name": *"\([^"]*\)".*/\1/p;q;}')"
 if [ -z "$PROJECT" ]; then
     echo "❌ Could not read docker-compose.yml. Output:"
     docker compose config --quiet || true

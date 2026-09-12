@@ -86,10 +86,79 @@ Open `https://mail.yourdomain.com` in your browser.
 ```
 
 This will:
+- `git pull` this repository, so you get the current compose file, Rspamd
+  configuration and scripts — not just the container images
+- Add `RSPAMD_PASSWORD` to your `.env` if you do not have one yet
+- Upgrade PostgreSQL 15 to 18 if you are still on 15 (see below)
 - Backup your database
 - Pull latest images
 - Run migrations
 - Automatically rollback if anything fails
+
+Because it pulls this repository, run it from the checkout you installed from
+and leave your local edits out of tracked files. Your `.env` is not tracked and
+is never modified except to add a missing `RSPAMD_PASSWORD`.
+
+### Postgres 15 to 18
+
+Installs made before this release store their mail in PostgreSQL 15. This
+release runs PostgreSQL 18. There is no in-place upgrade between PostgreSQL
+majors, and the official 18 image also mounts a different path, so the data has
+to be dumped out of 15 and restored into a fresh 18 volume.
+
+`./update.sh` does this for you. **Run it while your existing stack is still
+up**, in this order:
+
+```bash
+cd una.email-install
+docker compose ps          # confirm your containers are running
+./update.sh                # pulls this repo, then upgrades Postgres, then updates
+```
+
+`update.sh` pulls the new files first and then performs the upgrade, so your
+old PostgreSQL 15 container is still the one running when the dump is taken —
+which is what the upgrade needs. If your stack is **down** when you start, the
+script will stop and tell you to bring the old one up first:
+
+```bash
+git stash                       # keep the new files for later
+git checkout 3246e1d            # the last PostgreSQL 15 release
+docker compose up -d postgres
+git checkout main && git stash pop
+./update.sh
+```
+
+Your PostgreSQL 15 volume is **never written to**. The upgrade dumps from it
+and restores onto a new `postgres_data_18` volume, so the old data stays
+exactly as it was and a rollback is always available.
+
+#### Rollback
+
+If something goes wrong after the upgrade, set the `postgres` service in
+`docker-compose.yml` back to:
+
+```yaml
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+```
+
+and run `docker compose up -d postgres`. (Checking out the previous release
+with `git checkout 3246e1d` does the same thing and also restores the rest of
+the old configuration.)
+
+Once you are confident the upgrade worked, reclaim the old volume:
+
+```bash
+docker volume rm unaemail-install_postgres_data
+```
+
+You can also rehearse the upgrade without touching anything — it restores into
+a throwaway volume, compares row counts, and destroys it again:
+
+```bash
+./scripts/upgrade-postgres.sh --dry-run
+```
 
 ### Renew SSL Certificate
 
