@@ -292,6 +292,29 @@ echo ""
 echo "Step 7: Database Migrations"
 echo "---------------------------"
 
+# Every box installed before February 2026 was built by `prisma db push`, so
+# it has the schema and an empty _prisma_migrations. `migrate deploy` refuses
+# those with P3005, "The database schema is not empty" -- which is why this
+# step has never actually succeeded on such a box. The helper records the
+# migrations the database already has so that deploy can apply the rest. It
+# does nothing on a database that already has migration rows.
+#
+# The helper ships inside the web image, so an image built before it existed
+# will not have it. That is not fatal: the migrate deploy below then fails the
+# way it already does today, and the rollback path takes over.
+echo "🧾 Recording any migrations this database already has..."
+if docker compose exec -T web test -f scripts/baseline-migrations.js 2>/dev/null; then
+    if ! docker compose exec -T web node scripts/baseline-migrations.js; then
+        echo "⚠️  Could not record the existing migration history."
+        echo "   The migration step below will report what went wrong."
+    fi
+else
+    echo "⚠️  This web image predates the baseline helper; skipping."
+    echo "   If migrations fail with P3005, re-run update.sh once a newer"
+    echo "   image has been pulled."
+fi
+echo ""
+
 echo "🗄️  Applying database migrations..."
 if docker compose exec -T web npx prisma migrate deploy 2>&1; then
     echo "✅ Migrations complete"
