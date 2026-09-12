@@ -192,7 +192,8 @@ echo "✅ Postgres ready"
 echo "⏳ Waiting for the web container..."
 WEB_READY=""
 for _ in $(seq 1 60); do
-    if docker compose exec -T web curl -sf http://localhost:3000 > /dev/null 2>&1; then
+    # wget: the web image has no curl.
+    if docker compose exec -T web wget -q -O /dev/null http://localhost:3000 > /dev/null 2>&1; then
         WEB_READY="yes"
         break
     fi
