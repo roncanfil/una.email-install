@@ -28,9 +28,26 @@ cd una.email-install
 The installer will:
 - Configure firewall automatically (if firewalld or ufw is active)
 - Ask for your domain, subdomain, and database password
+- Generate an `RSPAMD_PASSWORD` for you (you are not asked for one) and write
+  it to `.env`
 - Pull and start all Docker containers
-- Set up the database
+- Apply the database migrations
 - Generate personalized DNS instructions
+
+#### Configuration (`.env`)
+
+`install.sh` writes `.env` for you; `.env.example` is the tracked template that
+documents every key. Two of them are secrets and are never committed:
+
+| Key | What it is |
+|-----|------------|
+| `DB_PASSWORD` | Postgres password for the `una_email` role |
+| `RSPAMD_PASSWORD` | Rspamd controller password. **Required** -- `docker compose` refuses to start without it. It guards the controller on :11334 (`/stat`, `/learnspam`, `/learnham`, the web UI), which the Rspamd image otherwise leaves on its default `q1`, and the web app uses the same value to teach the Bayes classifier when you report spam. |
+
+The Rspamd controller is published on **`127.0.0.1:11334` only** -- it is not
+reachable from outside the server. The web container talks to it over the
+internal Docker network at `http://rspamd:11334`. To open the Rspamd web UI,
+tunnel to it: `ssh -L 11334:127.0.0.1:11334 you@yourserver`.
 
 ### 3. Configure DNS
 
@@ -116,16 +133,20 @@ telnet mail.yourdomain.com 25
 
 ## Architecture
 
-UNA Email runs 6 Docker containers:
+UNA Email runs 8 long-lived Docker containers, plus one that runs at startup
+and exits:
 
 | Service | Purpose |
 |---------|---------|
-| **postgres** | Database |
+| **postgres** | Database (PostgreSQL 18) |
 | **postfix** | Mail server (SMTP) |
 | **rspamd** | Spam filtering + DKIM signing |
+| **redis** | Backing store for Rspamd statistics, rate limits and greylisting |
+| **clamav** | Antivirus scanning of inbound attachments |
 | **nginx** | Web server + SSL termination |
 | **certbot** | SSL certificate management |
 | **web** | Next.js web interface |
+| *pg-guard* | Runs once at startup and exits. Refuses to let PostgreSQL 18 start against an empty data volume while an old PostgreSQL 15 volume still holds your mail -- see [Postgres 15 to 18](#postgres-15-to-18). |
 
 ---
 

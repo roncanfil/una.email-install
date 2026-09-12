@@ -126,6 +126,10 @@ echo "------------------------------"
 # Get server IP (force IPv4)
 SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -4 -s icanhazip.com 2>/dev/null || curl -s api.ipify.org 2>/dev/null || echo "YOUR_SERVER_IP")
 
+# Rspamd controller password. Not prompted for: nobody types this, it just has
+# to stop being the image default "q1" on the controller that owns /learnspam.
+RSPAMD_PASSWORD=$(openssl rand -base64 24)
+
 # Create .env file
 cat > .env << EOF
 # UNA.Email Configuration
@@ -134,11 +138,16 @@ cat > .env << EOF
 DOMAIN=$DOMAIN
 MAIL_SUBDOMAIN=$MAIL_SUBDOMAIN
 DB_PASSWORD=$DB_PASSWORD
+RSPAMD_PASSWORD=$RSPAMD_PASSWORD
 NODE_ENV=production
 IMAGE_TAG=latest
+GITHUB_REPOSITORY=roncanfil/una.email
 EOF
 
+chmod 600 .env
+
 echo "✅ Created .env file"
+echo "✅ Rspamd controller password: generated, in .env"
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true
@@ -159,8 +168,44 @@ docker compose pull
 echo "🚀 Starting containers..."
 docker compose up -d
 
-echo "⏳ Waiting for services to initialize..."
-sleep 20
+echo "⏳ Waiting for Postgres..."
+PG_READY=""
+for _ in $(seq 1 60); do
+    if docker compose exec -T postgres pg_isready -U una_email > /dev/null 2>&1; then
+        PG_READY="yes"
+        break
+    fi
+    sleep 1
+done
+
+if [ -z "$PG_READY" ]; then
+    echo "❌ Postgres did not become ready within 60 seconds."
+    echo ""
+    docker compose logs --tail 40 postgres
+    exit 1
+fi
+echo "✅ Postgres ready"
+
+# The web image's start command is `next start`. It does not run migrations and
+# it does not wait for anything, so we wait for it ourselves before asking it
+# to run Prisma.
+echo "⏳ Waiting for the web container..."
+WEB_READY=""
+for _ in $(seq 1 60); do
+    if docker compose exec -T web curl -sf http://localhost:3000 > /dev/null 2>&1; then
+        WEB_READY="yes"
+        break
+    fi
+    sleep 2
+done
+
+if [ -z "$WEB_READY" ]; then
+    echo "❌ The web container did not respond within 120 seconds."
+    echo ""
+    docker compose logs --tail 40 web
+    exit 1
+fi
+echo "✅ Web container ready"
 
 echo "📋 Service status:"
 docker compose ps --format "table {{.Name}}\t{{.Status}}"
@@ -172,9 +217,20 @@ echo ""
 echo "Step 6: Database Setup"
 echo "----------------------"
 
-echo "🗄️  Creating database schema..."
-docker compose exec -T web npx prisma db push --accept-data-loss > /dev/null 2>&1
-echo "✅ Database ready"
+# migrate deploy, never `db push`. The migrations are hand-authored -- generated
+# search_vector columns and the Phase 2/3 data backfills are SQL that Prisma
+# cannot derive from schema.prisma, and `db push` would skip all of it.
+echo "🗄️  Applying database migrations..."
+if docker compose exec -T web npx prisma migrate deploy; then
+    echo "✅ Database ready"
+else
+    echo ""
+    echo "❌ Database migration failed. See the output above."
+    echo "   The stack is running but the schema is incomplete; fix the error"
+    echo "   and re-run:  docker compose exec -T web npx prisma migrate deploy"
+    echo "   Then finish setup with ./install.sh again."
+    exit 1
+fi
 echo ""
 
 # ============================================
