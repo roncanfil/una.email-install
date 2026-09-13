@@ -94,6 +94,23 @@ else
     echo "✅ added RSPAMD_PASSWORD to .env"
 fi
 
+# SESSION_SECRET became required with Phase 5 (sign-in). Same shape as above:
+# compose refuses to start without it, and an install made before sign-in
+# existed has no such line. Generating one here is safe -- there are no
+# sessions to invalidate on an install that has never had any.
+if grep -qE '^[[:space:]]*SESSION_SECRET=.+' .env; then
+    echo "✅ SESSION_SECRET present"
+elif grep -qE '^[[:space:]]*SESSION_SECRET=[[:space:]]*$' .env; then
+    echo "❌ SESSION_SECRET is present but empty in .env."
+    echo "   Set a value (or delete the empty line and re-run this script):"
+    echo "     echo \"SESSION_SECRET=\$(openssl rand -base64 32)\" >> .env"
+    exit 1
+else
+    printf '\n# Session signing secret (added by update.sh)\nSESSION_SECRET=%s\n' \
+        "$(openssl rand -base64 32)" >> .env
+    echo "✅ added SESSION_SECRET to .env"
+fi
+
 # Load configuration only after .env is known to be complete.
 set -a
 # shellcheck disable=SC1091

@@ -221,6 +221,11 @@ services:
       # Teaching the Bayes classifier from "Report spam" / "Not spam".
       RSPAMD_URL: http://rspamd:11334
       RSPAMD_PASSWORD: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
+      # Signs the session cookie. Required the same way RSPAMD_PASSWORD is: an
+      # unset secret must stop the stack, not leave the app issuing a cookie
+      # that verifies against itself. install.sh generates it; update.sh adds
+      # one to installs that predate it.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
     volumes:
       - attachments_data:/data/attachments
     depends_on:

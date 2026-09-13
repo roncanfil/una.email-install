@@ -130,6 +130,10 @@ SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -4 -s icanhazip.com 2>/de
 # to stop being the image default "q1" on the controller that owns /learnspam.
 RSPAMD_PASSWORD=$(openssl rand -base64 24)
 
+# Session signing secret. Not prompted for either: it signs the cookie that
+# keeps a browser signed in, and it only has to be random and stay put.
+SESSION_SECRET=$(openssl rand -base64 32)
+
 # Create .env file
 cat > .env << EOF
 # UNA.Email Configuration
@@ -139,6 +143,7 @@ DOMAIN=$DOMAIN
 MAIL_SUBDOMAIN=$MAIL_SUBDOMAIN
 DB_PASSWORD=$DB_PASSWORD
 RSPAMD_PASSWORD=$RSPAMD_PASSWORD
+SESSION_SECRET=$SESSION_SECRET
 NODE_ENV=production
 IMAGE_TAG=latest
 GITHUB_REPOSITORY=roncanfil/una.email
@@ -148,6 +153,7 @@ chmod 600 .env
 
 echo "✅ Created .env file"
 echo "✅ Rspamd controller password: generated, in .env"
+echo "✅ Session secret: generated, in .env"
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true
