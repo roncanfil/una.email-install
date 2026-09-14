@@ -8,3 +8,9 @@ YOUR_SETUP.md
 letsencrypt/
 web-root/
 backups/
+
+# DKIM keys, written by install.sh and by Settings -> Domains. The directory is
+# tracked (dkim/.gitkeep) because both rspamd and web bind-mount it; the keys
+# in it are secrets and belong to this install only.
+dkim/*
+!dkim/.gitkeep

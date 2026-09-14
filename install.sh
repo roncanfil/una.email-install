@@ -248,30 +248,80 @@ echo "---------------------------"
 
 echo "🔑 Creating DKIM signing key..."
 
-# Create the DKIM directory if it doesn't exist
-docker compose exec -T rspamd mkdir -p /var/lib/rspamd/dkim
+# Written on the host, into ./dkim, which both rspamd (read-only) and web
+# (read-write) bind-mount. It used to be generated with `rspamadm dkim_keygen`
+# inside the rspamd container, into a corner of the rspamd_data volume -- which
+# no other container could see. The web app has to be able to write a key when
+# an admin adds a second domain from Settings -> Domains, so the keys moved to
+# a directory both containers share. update.sh copies an existing install's key
+# out of the old volume.
+#
+# openssl on the host rather than in a container: install.sh already requires
+# it (SESSION_SECRET, RSPAMD_PASSWORD) and the rspamd mount is read-only now.
+mkdir -p dkim
 
-# Generate the DKIM key (rspamadm creates the key in the correct format for rspamd)
-docker compose exec -T rspamd rspamadm dkim_keygen -s una -d $DOMAIN -k /var/lib/rspamd/dkim/una.$DOMAIN.key > /dev/null 2>&1
+DKIM_KEY="dkim/una.$DOMAIN.key"
+DKIM_PUB="dkim/una.$DOMAIN.pub"
 
-# Set proper permissions on the private key
-docker compose exec -T rspamd chmod 640 /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
-docker compose exec -T rspamd chown _rspamd:_rspamd /var/lib/rspamd/dkim/una.$DOMAIN.key 2>/dev/null || true
+if [ -f "$DKIM_KEY" ]; then
+    echo "✅ DKIM key already present -- keeping it"
+else
+    openssl genrsa -out "$DKIM_KEY" 2048 2>/dev/null
+    echo "✅ DKIM key generated"
+fi
 
-# Extract the public key directly from the private key file using openssl
-# This is more reliable than parsing rspamadm output
-DKIM_PUBKEY=$(docker compose exec -T rspamd openssl rsa -in /var/lib/rspamd/dkim/una.$DOMAIN.key -pubout 2>/dev/null | grep -v "^-" | tr -d '\n')
+openssl rsa -in "$DKIM_KEY" -pubout -out "$DKIM_PUB" 2>/dev/null
+
+# 0640 on the key and 0644 on the public half, matching scripts/generate-dkim.sh
+# in the source repo. World-readable is wrong for a signing key.
+#
+# The group matters as much as the mode: Rspamd reads the key off this bind
+# mount as uid/gid 11333 (_rspamd in rspamd/rspamd:4.1), and on Linux the
+# ownership a bind mount presents is the host's. A 0640 root:root key is one
+# Rspamd cannot open -- which shows up as mail going out unsigned, with nothing
+# in any log to say why.
+chgrp 11333 "$DKIM_KEY" 2>/dev/null || chown :11333 "$DKIM_KEY" 2>/dev/null || \
+    echo "⚠️  Could not give $DKIM_KEY to gid 11333 -- Rspamd may not be able to read it"
+chmod 640 "$DKIM_KEY"
+chmod 644 "$DKIM_PUB"
+
+DKIM_PUBKEY=$(grep -v "PUBLIC KEY" "$DKIM_PUB" | tr -d '\n')
 
 if [ -n "$DKIM_PUBKEY" ]; then
     DKIM_RECORD="v=DKIM1; k=rsa; p=$DKIM_PUBKEY"
-    echo "✅ DKIM key generated"
 else
-    DKIM_RECORD="v=DKIM1; k=rsa; p=<run: docker compose exec rspamd openssl rsa -in /var/lib/rspamd/dkim/una.$DOMAIN.key -pubout 2>/dev/null | grep -v '^-' | tr -d '\\n'>"
-    echo "⚠️  DKIM key generated but could not extract public key automatically"
+    DKIM_RECORD="v=DKIM1; k=rsa; p=<run: openssl rsa -in $DKIM_KEY -pubout | grep -v '^-' | tr -d '\\n'>"
+    echo "⚠️  Could not extract the public key automatically"
 fi
 
-# Create symlink for mail. subdomain DKIM (for bounce messages from mail.$DOMAIN)
-docker compose exec -T rspamd ln -sf /var/lib/rspamd/dkim/una.$DOMAIN.key /var/lib/rspamd/dkim/una.mail.$DOMAIN.key 2>/dev/null || true
+# The same record as a file, so Settings -> Domains and this script leave the
+# same three files behind for every domain.
+cat > "dkim/una.$DOMAIN.dns.txt" << DKIMEOF
+=================================================================
+DKIM DNS Record for $DOMAIN
+=================================================================
+
+Add this TXT record to your DNS:
+
+  Host/Name:  una._domainkey.$DOMAIN
+  Type:       TXT
+  Value:      $DKIM_RECORD
+
+Full record for copy/paste (single line):
+$DKIM_RECORD
+
+=================================================================
+DKIMEOF
+chmod 644 "dkim/una.$DOMAIN.dns.txt"
+
+# Bounce messages come from mail.$DOMAIN, and dkim_signing looks the key up by
+# the From domain. A relative symlink, so it resolves inside the container too.
+ln -sf "una.$DOMAIN.key" "dkim/una.mail.$DOMAIN.key" 2>/dev/null || true
+
+# Rspamd reads the mount as its own user, so the directory has to be traversable
+# and the key readable by it. Group-readable plus a world-executable directory
+# is the least that achieves it without making the key world-readable.
+chmod 755 dkim
 echo ""
 
 # ============================================

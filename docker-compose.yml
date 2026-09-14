@@ -112,6 +112,15 @@ services:
     volumes:
       - rspamd_data:/var/lib/rspamd
       - ./rspamd/local.d:/etc/rspamd/local.d:ro
+      # DKIM signing keys, read-only: Rspamd reads
+      # /var/lib/rspamd/dkim/$selector.$domain.key and never writes one.
+      #
+      # A host directory, not a corner of rspamd_data as it used to be. The web
+      # container writes a key when an admin adds a domain from
+      # Settings -> Domains, and two containers cannot share a path that only
+      # one of them has. update.sh copies the keys out of the old volume into
+      # ./dkim before this mount hides them.
+      - ./dkim:/var/lib/rspamd/dkim:ro
     ports:
       # Localhost only. The web container reaches the controller over the
       # compose network at http://rspamd:11334 regardless; nothing outside the
@@ -228,6 +237,12 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
     volumes:
       - attachments_data:/data/attachments
+      # The same ./dkim the rspamd service mounts read-only, read-write here.
+      # Adding a domain from Settings -> Domains writes the key pair and the
+      # DNS snippet; without this mount they would go into the container's
+      # overlay filesystem and be lost on the next recreate, and Rspamd would
+      # never see them at all.
+      - ./dkim:/app/dkim
     depends_on:
       - postgres
       - postfix
