@@ -235,6 +235,15 @@ services:
       # that verifies against itself. install.sh generates it; update.sh adds
       # one to installs that predate it.
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      # Web Push (VAPID). Required the same way and for the same reason: an
+      # unset key would not stop the app, it would make every notification
+      # silently not happen, which reads as a broken feature rather than a
+      # missing setting. install.sh generates a pair; update.sh adds one to
+      # installs that predate Phase 6.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?set VAPID_PUBLIC_KEY in .env}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?set VAPID_PRIVATE_KEY in .env}
+      # Who the push service contacts about this application server.
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@${DOMAIN:-localhost}}
     volumes:
       - attachments_data:/data/attachments
       # The same ./dkim the rspamd service mounts read-only, read-write here.

@@ -134,6 +134,24 @@ RSPAMD_PASSWORD=$(openssl rand -base64 24)
 # keeps a browser signed in, and it only has to be random and stay put.
 SESSION_SECRET=$(openssl rand -base64 32)
 
+# Web Push (VAPID) keypair. Also not prompted for.
+#
+# A VAPID pair is an ordinary P-256 key: the private key is the 32-byte
+# scalar and the public key is the uncompressed point (0x04 || X || Y), both
+# base64url with the padding stripped. `web-push generate-vapid-keys` does
+# exactly this and needs Node, which a fresh server does not have -- openssl
+# does, and install.sh already leans on it for the secrets above.
+#
+# Changing these later invalidates every push subscription in the database and
+# every browser has to be asked again, so they are generated once, here.
+VAPID_PEM=$(mktemp)
+openssl ecparam -name prime256v1 -genkey -noout -out "$VAPID_PEM" 2>/dev/null
+VAPID_PRIVATE_KEY=$(openssl ec -in "$VAPID_PEM" -outform DER 2>/dev/null \
+  | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=')
+VAPID_PUBLIC_KEY=$(openssl ec -in "$VAPID_PEM" -pubout -outform DER 2>/dev/null \
+  | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=')
+rm -f "$VAPID_PEM"
+
 # Create .env file
 cat > .env << EOF
 # UNA.Email Configuration
@@ -144,6 +162,9 @@ MAIL_SUBDOMAIN=$MAIL_SUBDOMAIN
 DB_PASSWORD=$DB_PASSWORD
 RSPAMD_PASSWORD=$RSPAMD_PASSWORD
 SESSION_SECRET=$SESSION_SECRET
+VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY
+VAPID_SUBJECT=mailto:admin@$DOMAIN
 NODE_ENV=production
 IMAGE_TAG=latest
 GITHUB_REPOSITORY=roncanfil/una.email
@@ -154,6 +175,7 @@ chmod 600 .env
 echo "✅ Created .env file"
 echo "✅ Rspamd controller password: generated, in .env"
 echo "✅ Session secret: generated, in .env"
+echo "✅ Web Push VAPID keypair: generated, in .env"
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true
