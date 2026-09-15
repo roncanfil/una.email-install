@@ -392,9 +392,9 @@ echo "🔑 Creating DKIM signing key..."
 # (read-write) bind-mount. It used to be generated with `rspamadm dkim_keygen`
 # inside the rspamd container, into a corner of the rspamd_data volume -- which
 # no other container could see. The web app has to be able to write a key when
-# an admin adds a second domain from Settings -> Domains, so the keys moved to
-# a directory both containers share. update.sh copies an existing install's key
-# out of the old volume.
+# an admin presses Generate / Replace DKIM on Settings -> Domains, so the keys
+# moved to a directory both containers share. update.sh copies an existing
+# install's key out of the old volume.
 #
 # openssl on the host rather than in a container: install.sh already requires
 # it (SESSION_SECRET, RSPAMD_PASSWORD) and the rspamd mount is read-only now.
