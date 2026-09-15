@@ -160,6 +160,24 @@ services:
       POSTFIX_milter_protocol: "6"
       # accept, not tempfail: if Rspamd is down, mail still flows.
       POSTFIX_milter_default_action: accept
+
+      # --- Outbound relay (optional) ---------------------------------------
+      #
+      # Unset, which is the default, means Postfix delivers straight to each
+      # recipient's MX on port 25 -- exactly as it always has. Set these to
+      # hand outbound mail to a smarthost instead, for a VPS whose port 25 is
+      # blocked or whose IP is in a blocklist. Inbound is unaffected either
+      # way: the MX still points here and port 25 above is still open.
+      #
+      # Deliberately not passed to `web`: the SASL password belongs to the one
+      # process that authenticates with it. The web app learns the mode from
+      # the mail API's /health, which never returns credentials.
+      SMTP_RELAY_PROVIDER: ${SMTP_RELAY_PROVIDER:-}
+      SMTP_RELAY_REGION: ${SMTP_RELAY_REGION:-}
+      SMTP_RELAY_HOST: ${SMTP_RELAY_HOST:-}
+      SMTP_RELAY_PORT: ${SMTP_RELAY_PORT:-}
+      SMTP_RELAY_USERNAME: ${SMTP_RELAY_USERNAME:-}
+      SMTP_RELAY_PASSWORD: ${SMTP_RELAY_PASSWORD:-}
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - attachments_data:/data/attachments

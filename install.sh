@@ -118,6 +118,70 @@ fi
 echo ""
 
 # ============================================
+# Step 3b: Outbound relay (optional)
+# ============================================
+#
+# Two directions, one port number, and confusing them is the classic
+# self-hosted mail failure. INBOUND 25 is required no matter what is answered
+# here -- the MX points at this box. OUTBOUND 25 is what most VPS providers
+# block, and what a relay replaces.
+#
+# Declining is a first-class answer: the keys are written commented out, so the
+# operator who later discovers their mail is not arriving finds them already in
+# .env with the values named, rather than having to go and look up what they
+# are called.
+echo "Step 3b: Outbound Mail"
+echo "----------------------"
+echo ""
+echo "By default UNA delivers mail straight to each recipient's mail server on"
+echo "port 25. That needs OUTBOUND port 25 open, which many providers block, and"
+echo "an IP with a clean reputation."
+echo ""
+echo "You can instead hand outbound mail to Amazon SES over port 587. This does"
+echo "not change receiving: inbound port 25 is still required either way."
+echo ""
+read -p "Send outbound mail through Amazon SES? [y/N]: " USE_SES
+echo ""
+
+SES_ENABLED=false
+if [ "$USE_SES" = "y" ] || [ "$USE_SES" = "Y" ]; then
+    echo "SES issues its own SMTP credentials. These are NOT your AWS access key"
+    echo "and secret -- create them in the SES console under"
+    echo "Account dashboard -> Create SMTP credentials."
+    echo ""
+    read -p "SES region [us-east-1]: " SES_REGION
+    SES_REGION=${SES_REGION:-us-east-1}
+    read -p "SES SMTP username: " SES_USERNAME
+    # -s so the password is not left on screen or in a scrollback buffer. It is
+    # still written to .env, which is chmod 600 below.
+    read -s -p "SES SMTP password: " SES_PASSWORD
+    echo ""
+    echo ""
+
+    if [ -z "$SES_USERNAME" ] || [ -z "$SES_PASSWORD" ]; then
+        # Half a credential pair stops the mail container at boot on purpose,
+        # so writing one here would produce an install that never starts. Fall
+        # back rather than fail the whole installation over it.
+        echo "⚠️  Both a username and a password are needed. Skipping SES;"
+        echo "    UNA will deliver directly. Add the keys to .env later."
+        echo ""
+    else
+        SES_ENABLED=true
+        echo "✅ Outbound mail will go through SES in $SES_REGION"
+        echo ""
+        echo "⚠️  Publish the SES DNS records BEFORE you start sending:"
+        echo "    - SPF must include:amazonses.com"
+        echo "    - Easy DKIM: verify this domain in the SES console and publish"
+        echo "      the three CNAMEs it shows"
+        echo "    Until both exist, DMARC fails for everything you send."
+        echo ""
+        echo "⚠️  A new SES account is in the sandbox and can only send to"
+        echo "    addresses you have verified with Amazon."
+        echo ""
+    fi
+fi
+
+# ============================================
 # Step 4: Create Configuration
 # ============================================
 echo "Step 4: Creating Configuration"
@@ -152,6 +216,53 @@ VAPID_PUBLIC_KEY=$(openssl ec -in "$VAPID_PEM" -pubout -outform DER 2>/dev/null 
   | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=')
 rm -f "$VAPID_PEM"
 
+# The outbound-relay block, either way. Answering no still writes the keys --
+# commented out, with the values named -- because the person who needs them is
+# the person whose mail is not arriving, and they should find them in .env
+# rather than in a document.
+if [ "$SES_ENABLED" = true ]; then
+    RELAY_BLOCK=$(cat << RELAYEOF
+
+# Outbound relay. Inbound port 25 is still required; this only changes where
+# outgoing mail leaves from. Run 'docker compose up -d postfix' after editing.
+# The username and password below are SES SMTP credentials, not an AWS key.
+# The password is single-quoted because Compose interpolates \$name inside an
+# unquoted .env value; keep the quotes if you edit it.
+SMTP_RELAY_PROVIDER=ses
+SMTP_RELAY_REGION=$SES_REGION
+SMTP_RELAY_HOST=
+SMTP_RELAY_PORT=587
+SMTP_RELAY_USERNAME=$SES_USERNAME
+SMTP_RELAY_PASSWORD='$SES_PASSWORD'
+RELAYEOF
+)
+else
+    RELAY_BLOCK=$(cat << 'RELAYEOF'
+
+# Outbound relay (not configured -- UNA delivers straight to each recipient's
+# mail server on port 25).
+#
+# Uncomment and fill these in if your provider blocks outbound 25 or your IP is
+# blocklisted, then run 'docker compose up -d postfix'. Inbound port 25 is still
+# required either way -- a relay only changes where outgoing mail leaves from.
+#
+# For SES, the username and password are SMTP credentials from the SES console
+# (Account dashboard -> Create SMTP credentials), NOT an AWS access key. Publish
+# an SPF include:amazonses.com and the three Easy DKIM CNAMEs before you switch
+# this on, or DMARC fails for everything you send.
+#
+#SMTP_RELAY_PROVIDER=ses
+#SMTP_RELAY_REGION=us-east-1
+#SMTP_RELAY_HOST=
+#SMTP_RELAY_PORT=587
+#SMTP_RELAY_USERNAME=
+# Single-quote the password if it contains a $ -- Compose interpolates $name
+# inside an unquoted .env value and the relay then sees a truncated password.
+#SMTP_RELAY_PASSWORD=
+RELAYEOF
+)
+fi
+
 # Create .env file
 cat > .env << EOF
 # UNA.Email Configuration
@@ -165,6 +276,8 @@ SESSION_SECRET=$SESSION_SECRET
 VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY
 VAPID_SUBJECT=mailto:admin@$DOMAIN
+$RELAY_BLOCK
+
 NODE_ENV=production
 IMAGE_TAG=latest
 GITHUB_REPOSITORY=roncanfil/una.email
@@ -176,6 +289,11 @@ echo "✅ Created .env file"
 echo "✅ Rspamd controller password: generated, in .env"
 echo "✅ Session secret: generated, in .env"
 echo "✅ Web Push VAPID keypair: generated, in .env"
+if [ "$SES_ENABLED" = true ]; then
+    echo "✅ Outbound relay: Amazon SES ($SES_REGION), in .env"
+else
+    echo "✅ Outbound mail: direct to each recipient (SMTP_RELAY_* commented in .env)"
+fi
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true

@@ -12,10 +12,23 @@ UNA Email is a self-hosted email solution for families and small teams. Run your
 
 ### 1. Prepare Your Server
 
-**Request SMTP unblocking** (most important step!)
-- Open a support ticket with your VPS provider
-- Ask them to "remove the SMTP block on port 25"
-- After approval, do a full Stop/Start from their control panel
+**Sort out port 25.** There are two directions and they are not the same
+problem.
+
+- **Inbound 25 — required, always.** Your MX record points at this server, so
+  nothing can be delivered to you unless the provider allows inbound
+  connections on port 25. Open a support ticket asking them to "remove the SMTP
+  block on port 25", and after approval do a full Stop/Start from their control
+  panel. You also want correct reverse DNS (PTR) for the IP and a HELO name
+  that matches it.
+- **Outbound 25 — optional, if you use a relay.** Many providers will not
+  unblock outbound 25 at all, and a fresh IP is often blocklisted even when they
+  do. Set `SMTP_RELAY_PROVIDER` (Amazon SES or any SMTP host) and UNA sends over
+  587 or 465 instead. The installer offers to set this up for you; you can also
+  add it to `.env` later.
+
+A relay never replaces inbound 25. It only changes where your outgoing mail
+leaves from.
 
 ### 2. Install UNA Email
 
@@ -28,6 +41,9 @@ cd una.email-install
 The installer will:
 - Configure firewall automatically (if firewalld or ufw is active)
 - Ask for your domain, subdomain, and database password
+- Ask whether outbound mail should go through Amazon SES (optional — skipping it
+  leaves UNA delivering directly, and writes the keys commented out so they are
+  easy to find later)
 - Generate an `RSPAMD_PASSWORD` for you (you are not asked for one) and write
   it to `.env`
 - Pull and start all Docker containers
