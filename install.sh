@@ -144,19 +144,41 @@ fi
 echo "Step 3: Database Password"
 echo "-------------------------"
 
-# Generate a random password
-GENERATED_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+# An .env from an earlier run of this script wins, and is not offered as a
+# choice.
+#
+# This script is re-runnable by design -- every failure path above tells the
+# operator to fix the problem and run it again -- but Postgres initialised its
+# `una_email` role from whatever DB_PASSWORD was set the first time, and it
+# keeps that password for the life of the volume. Generating a fresh one on a
+# re-run writes a password the database does not have, and every container then
+# fails to authenticate against a database that was working a minute earlier.
+EXISTING_DB_PASSWORD=""
+if [ -f .env ]; then
+    EXISTING_DB_PASSWORD=$(grep -E '^[[:space:]]*DB_PASSWORD=.+' .env | head -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
+fi
 
-echo "Generated password: $GENERATED_PASSWORD"
-echo ""
-read -p "Press Enter to accept, or type your own password: " CUSTOM_PASSWORD
-
-if [ -n "$CUSTOM_PASSWORD" ]; then
-    DB_PASSWORD="$CUSTOM_PASSWORD"
-    echo "✅ Using your custom password"
+if [ -n "$EXISTING_DB_PASSWORD" ]; then
+    DB_PASSWORD="$EXISTING_DB_PASSWORD"
+    echo "✅ Reusing the database password already in .env"
+    echo "   (Postgres keeps the password it was initialised with. To change it,"
+    echo "    remove the postgres volume -- which deletes all mail -- or ALTER"
+    echo "    the role and edit .env to match.)"
 else
-    DB_PASSWORD="$GENERATED_PASSWORD"
-    echo "✅ Using generated password"
+    # Generate a random password
+    GENERATED_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+    echo "Generated password: $GENERATED_PASSWORD"
+    echo ""
+    read -p "Press Enter to accept, or type your own password: " CUSTOM_PASSWORD
+
+    if [ -n "$CUSTOM_PASSWORD" ]; then
+        DB_PASSWORD="$CUSTOM_PASSWORD"
+        echo "✅ Using your custom password"
+    else
+        DB_PASSWORD="$GENERATED_PASSWORD"
+        echo "✅ Using generated password"
+    fi
 fi
 echo ""
 
@@ -382,29 +404,35 @@ fi
 echo "✅ Postgres ready"
 
 # The web image's start command is `next start`. It does not run migrations and
-# it does not wait for anything, so we wait for it ourselves before asking it
-# to run Prisma.
-echo "⏳ Waiting for the web container..."
-WEB_READY=""
+# it does not wait for anything, so we wait for it ourselves.
+#
+# TWO waits, and the order between them and the migration is the whole point.
+# Waiting for HTTP first deadlocks: the root route calls prisma.user.count(),
+# so an un-migrated database makes it answer 500 forever, and the migration
+# that would fix it is below. The installer would time out at 120 seconds
+# having never migrated anything, and the logs it printed showed Prisma
+# complaining that `public.users` does not exist -- which is the app behaving
+# correctly against an empty schema, not a failure.
+#
+# So: wait for the container to be *running* (all `exec` needs), migrate, and
+# only then ask for a page.
+echo "⏳ Waiting for the web container to start..."
+WEB_UP=""
 for _ in $(seq 1 60); do
-    # wget: the web image has no curl.
-    if docker compose exec -T web wget -q -O /dev/null http://localhost:3000 > /dev/null 2>&1; then
-        WEB_READY="yes"
+    if docker compose exec -T web true > /dev/null 2>&1; then
+        WEB_UP="yes"
         break
     fi
     sleep 2
 done
 
-if [ -z "$WEB_READY" ]; then
-    echo "❌ The web container did not respond within 120 seconds."
+if [ -z "$WEB_UP" ]; then
+    echo "❌ The web container did not start within 120 seconds."
     echo ""
     docker compose logs --tail 40 web
     exit 1
 fi
-echo "✅ Web container ready"
-
-echo "📋 Service status:"
-docker compose ps --format "table {{.Name}}\t{{.Status}}"
+echo "✅ Web container running"
 echo ""
 
 # ============================================
@@ -427,6 +455,35 @@ else
     echo "   Then finish setup with ./install.sh again."
     exit 1
 fi
+echo ""
+
+# Next.js may hold a rendered error from a request made before the schema
+# existed. A restart costs a few seconds and makes the check below mean what it
+# says.
+echo "🔄 Restarting web to pick up the new schema..."
+docker compose restart web > /dev/null 2>&1 || true
+
+echo "⏳ Waiting for the web interface..."
+WEB_READY=""
+for _ in $(seq 1 60); do
+    # wget: the web image has no curl.
+    if docker compose exec -T web wget -q -O /dev/null http://localhost:3000 > /dev/null 2>&1; then
+        WEB_READY="yes"
+        break
+    fi
+    sleep 2
+done
+
+if [ -z "$WEB_READY" ]; then
+    echo "❌ The web container did not serve a page within 120 seconds."
+    echo ""
+    docker compose logs --tail 40 web
+    exit 1
+fi
+echo "✅ Web interface ready"
+
+echo "📋 Service status:"
+docker compose ps --format "table {{.Name}}\t{{.Status}}"
 echo ""
 
 # ============================================
