@@ -132,9 +132,9 @@ else
     openssl ecparam -name prime256v1 -genkey -noout -out "$UPD_VAPID_PEM" 2>/dev/null
     printf '\n# Web Push VAPID keypair (added by update.sh)\nVAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n' \
         "$(openssl ec -in "$UPD_VAPID_PEM" -pubout -outform DER 2>/dev/null \
-            | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=')" \
+            | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')" \
         "$(openssl ec -in "$UPD_VAPID_PEM" -outform DER 2>/dev/null \
-            | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=')" >> .env
+            | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')" >> .env
     rm -f "$UPD_VAPID_PEM"
     echo "✅ added VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY to .env"
 fi

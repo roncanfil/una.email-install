@@ -273,12 +273,26 @@ SESSION_SECRET=$(openssl rand -base64 32)
 #
 # Changing these later invalidates every push subscription in the database and
 # every browser has to be asked again, so they are generated once, here.
+# `tr -d '=\n'` -- the newline is not decoration.
+#
+# GNU coreutils base64 wraps its output at 76 columns. The public key is 87
+# characters once the padding is stripped, so it arrived in .env as 76
+# characters on one line and an orphan 11-character line after it. That orphan
+# is not KEY=VALUE, so `source .env` tried to run it as a command:
+#
+#   .env: line 11: HURWceO8gXc: command not found
+#
+# which, under `set -e` in renew-ssl.sh, exited the script before it did
+# anything. Docker Compose meanwhile read the truncated 76-character value and
+# Web Push would have been quietly signing with a corrupt key. The private key
+# is 43 characters and never wrapped, but it gets the same treatment so the two
+# cannot drift.
 VAPID_PEM=$(mktemp)
 openssl ecparam -name prime256v1 -genkey -noout -out "$VAPID_PEM" 2>/dev/null
 VAPID_PRIVATE_KEY=$(openssl ec -in "$VAPID_PEM" -outform DER 2>/dev/null \
-  | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=')
+  | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
 VAPID_PUBLIC_KEY=$(openssl ec -in "$VAPID_PEM" -pubout -outform DER 2>/dev/null \
-  | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=')
+  | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')
 rm -f "$VAPID_PEM"
 
 # The outbound-relay block, either way. Answering no still writes the keys --
@@ -350,6 +364,29 @@ GITHUB_REPOSITORY=roncanfil/una.email
 EOF
 
 chmod 600 .env
+
+# Every consumer of this file -- `source .env` in renew-ssl.sh and update.sh,
+# and Docker Compose's own parser -- assumes one KEY=VALUE per line. A value
+# containing a newline silently becomes a line that is neither, and the error
+# surfaces later and somewhere else. Check it here, where the fix is obvious.
+if ! ( set -e; . ./.env ) > /dev/null 2>&1; then
+    echo "❌ The .env just written cannot be sourced."
+    echo ""
+    echo "   A generated value probably contains a newline, which splits it"
+    echo "   across two lines. The offending line:"
+    echo ""
+    ( . ./.env ) 2>&1 | head -3 | sed 's/^/     /'
+    echo ""
+    echo "   .env has been left in place for inspection."
+    exit 1
+fi
+
+# Belt and braces: a line that is neither a comment, a blank, nor KEY=VALUE.
+if grep -nvE '^[[:space:]]*(#|$)|^[A-Za-z_][A-Za-z0-9_]*=' .env > /dev/null 2>&1; then
+    echo "❌ .env has a line that is not KEY=VALUE:"
+    grep -nvE '^[[:space:]]*(#|$)|^[A-Za-z_][A-Za-z0-9_]*=' .env | head -3 | sed 's/^/     /'
+    exit 1
+fi
 
 echo "✅ Created .env file"
 echo "✅ Rspamd controller password: generated, in .env"
