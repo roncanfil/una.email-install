@@ -297,7 +297,12 @@ fi
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true
-chmod +x nginx/entrypoint.sh 2>/dev/null || true
+
+# Rspamd's optional override directory. Compose mounts it read-only, and Docker
+# would otherwise create it root-owned on first `up` -- harmless, but it leaves
+# an admin unable to drop a file in it without sudo. Empty is the normal state:
+# UNA's Rspamd config lives in the image.
+mkdir -p rspamd/override.d
 
 echo "✅ Set file permissions"
 echo ""

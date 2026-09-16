@@ -1,0 +1,29 @@
+# Optional Rspamd overrides for this install.
+#
+# UNA's own Rspamd configuration ships inside the rspamd image, so there is
+# nothing to edit here by default and nothing in this directory is tracked by
+# git. Use it when you need this one install to differ from the shipped
+# defaults; a file here survives every image update.
+#
+# Rspamd reads this as /etc/rspamd/override.d, which *replaces* a section
+# rather than merging into it -- so an override file must restate the whole
+# block it is overriding, not just the line you are changing.
+#
+# Raise the reject threshold and stop greylisting -- override.d/actions.conf:
+#
+#     reject = 20;
+#     add_header = 6;
+#     greylist = 4;
+#
+# Never greylist two known-good networks -- override.d/greylist.conf:
+#
+#     enabled = true;
+#     timeout = 5min;
+#     expire = 1d;
+#     whitelisted_ip = [74.125.0.0/16, 40.92.0.0/14];
+#
+# Check before you rely on it, and again after:
+#
+#     docker compose restart rspamd
+#     docker compose exec rspamd rspamadm configtest
+#     docker compose exec rspamd rspamadm configdump actions

@@ -100,18 +100,30 @@ services:
         max-file: "3"
 
   rspamd:
-    # Pinned: 4.1 is the version Rspamd config in rspamd/local.d was proven
-    # against. Do not float to latest.
-    image: rspamd/rspamd:4.1
+    # Rspamd 4.1 with UNA's spam, DKIM-signing and rate-limit configuration
+    # already in /etc/rspamd/local.d. That configuration used to be 18 files
+    # bind-mounted from this repo; it is built into the image now, so there is
+    # nothing here to keep in step with the application.
+    #
+    # The base version stays pinned inside the image -- the config is proven
+    # against Rspamd 4.1 specifically, so the tag you choose below moves UNA's
+    # config forward, never the Rspamd major version underneath it.
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/rspamd:${IMAGE_TAG:-latest}
     container_name: una-rspamd
     environment:
-      # Read by rspamd/local.d/worker-controller.inc as `env.controller_password`
+      # Read by the image's worker-controller.inc as `env.controller_password`
       # and hashed at startup, so the controller (and its /learnspam and
-      # /learnham endpoints) stop accepting the image's default "q1".
+      # /learnham endpoints) stop accepting Rspamd's default "q1". It is hashed
+      # at container start, not baked in: the image never contains a password.
       RSPAMD_controller_password: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
     volumes:
       - rspamd_data:/var/lib/rspamd
-      - ./rspamd/local.d:/etc/rspamd/local.d:ro
+      # Empty, and optional. Drop a .conf file in ./rspamd/override.d to change
+      # a shipped default on this install -- a different reject threshold, say,
+      # or a greylisting IP whitelist. override.d replaces a section outright
+      # where the image's local.d merges into it, so an override wins and
+      # survives every image update. Nothing in here is tracked by git.
+      - ./rspamd/override.d:/etc/rspamd/override.d:ro
       # DKIM signing keys, read-only: Rspamd reads
       # /var/lib/rspamd/dkim/$selector.$domain.key and never writes one.
       #
@@ -196,15 +208,14 @@ services:
         max-file: "3"
 
   nginx:
-    # Pinned to 1.28.x, not latest. Debian-based, NOT -alpine:
-    # nginx/entrypoint.sh needs bash and openssl to mint the first-boot
-    # dummy certificate, and nginx:1.28-alpine ships neither, so alpine
-    # would fail to start on every fresh install before certbot runs.
-    image: nginx:1.28
+    # The reverse proxy in front of the web app, with its config template and
+    # its first-boot entrypoint built in -- both used to be bind-mounted from
+    # ./nginx, which no longer exists. The entrypoint mints a self-signed
+    # certificate so Nginx can start before certbot has ever run, then hands
+    # over to the real one on later boots.
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/nginx:${IMAGE_TAG:-latest}
     container_name: una-nginx
     volumes:
-      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template
-      - ./nginx/entrypoint.sh:/entrypoint.sh
       - ./letsencrypt/etc:/etc/letsencrypt
       - ./web-root:/var/www/certbot
     ports:
@@ -213,7 +224,6 @@ services:
     environment:
       - DOMAIN=${DOMAIN}
       - MAIL_SUBDOMAIN=${MAIL_SUBDOMAIN:-mail}
-    command: ["/bin/bash", "-c", "chmod +x /entrypoint.sh && /entrypoint.sh"]
     depends_on:
       - web
     restart: unless-stopped

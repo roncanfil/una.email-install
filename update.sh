@@ -22,9 +22,10 @@ fi
 # Step 1: Update This Repository
 # ============================================
 # docker compose pull only updates the images. Everything else that makes the
-# product work -- docker-compose.yml, rspamd/local.d, this script -- is a file
-# on disk in this checkout, and without a git pull none of it ever reaches the
-# server.
+# product work -- docker-compose.yml, this script -- is a file on disk in this
+# checkout, and without a git pull none of it ever reaches the server. The
+# Rspamd and Nginx configuration used to be in that list; it ships inside their
+# images now, so `docker compose pull` is what moves it.
 #
 # UNA_UPDATE_REEXEC: bash reads a script incrementally as it executes, so a
 # pull that rewrites update.sh underneath a running update.sh would run a
@@ -38,8 +39,8 @@ if [ -z "${UNA_UPDATE_REEXEC:-}" ]; then
     if [ ! -d .git ]; then
         echo "❌ This directory is not a git checkout."
         echo ""
-        echo "   update.sh needs to pull the latest compose file, Rspamd config"
-        echo "   and scripts, not just the container images. Re-install from git:"
+        echo "   update.sh needs to pull the latest compose file and scripts,"
+        echo "   not just the container images. Re-install from git:"
         echo ""
         echo "     git clone https://github.com/roncanfil/una.email-install.git"
         echo ""
@@ -177,6 +178,36 @@ if [ -z "$(ls -A dkim 2>/dev/null | grep -v '^\.gitkeep$')" ] \
     fi
 else
     echo "✅ ./dkim present"
+fi
+
+# The Rspamd config moved out of this repo and into the rspamd image.
+#
+# ./rspamd/local.d used to be bind-mounted over /etc/rspamd/local.d. The pull
+# above deleted the tracked files in it and compose no longer mounts it, so an
+# install that never touched them needs nothing and this is silent. A directory
+# still standing here after the pull means untracked files -- somebody's own map
+# or .conf -- which are now being ignored rather than applied, and the only
+# honest thing to do is say so rather than let a customisation quietly lapse.
+mkdir -p rspamd/override.d
+if [ -d rspamd/local.d ] && [ -n "$(ls -A rspamd/local.d 2>/dev/null)" ]; then
+    echo "⚠️  rspamd/local.d still has files, and nothing reads them any more."
+    echo ""
+    echo "   UNA's Rspamd config ships inside the rspamd image now. These look"
+    echo "   like your own additions:"
+    ( cd rspamd/local.d && find . -type f | sed 's|^\./|     |' )
+    echo ""
+    echo "   Move anything you still want into rspamd/override.d/, which is"
+    echo "   mounted and is not tracked by git, then delete rspamd/local.d."
+    echo "   Note override.d *replaces* a section where local.d merged into it,"
+    echo "   so each file must restate the whole block it overrides."
+    echo ""
+elif [ -d rspamd/local.d ]; then
+    rmdir rspamd/local.d 2>/dev/null || true
+fi
+
+# Same move for Nginx: its template and entrypoint are in the nginx image now.
+if [ -d nginx ] && [ -z "$(ls -A nginx 2>/dev/null)" ]; then
+    rmdir nginx 2>/dev/null || true
 fi
 
 # Load configuration only after .env is known to be complete.
@@ -319,6 +350,24 @@ echo ""
 # ============================================
 echo "Step 5: Pulling Latest Images"
 echo "-----------------------------"
+
+# IMAGE_TAG pinned to a release from before rspamd and nginx were published as
+# images will not find them: CI only started tagging those two from this
+# version on, and `docker compose pull` fails on a manifest that does not
+# exist. Caught here so the message names the setting instead of a registry
+# 404. Everyone on the default `latest` sails past this.
+if [ -n "${IMAGE_TAG:-}" ] && [ "$IMAGE_TAG" != "latest" ]; then
+    if ! docker manifest inspect \
+        "ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/rspamd:${IMAGE_TAG}" \
+        > /dev/null 2>&1; then
+        echo "❌ No rspamd image published at IMAGE_TAG=$IMAGE_TAG."
+        echo ""
+        echo "   Rspamd and Nginx are published images as of this release; tags"
+        echo "   older than it only cover web and mail. Set IMAGE_TAG=latest in"
+        echo "   .env (or pin a tag from this release onwards) and re-run."
+        exit 1
+    fi
+fi
 
 echo "🚀 Downloading updates..."
 docker compose pull
@@ -464,15 +513,18 @@ else
 fi
 
 # Rspamd must actually be adding the headers the web app reads. An empty
-# `use` list is what a missing local.d/milter_headers.conf looks like, and it
-# stores every inbound message with a NULL spam score.
+# `use` list means milter_headers never loaded, and it stores every inbound
+# message with a NULL spam score.
 echo -n "🏷️  Spam headers: "
 if docker compose exec -T rspamd rspamadm configdump milter_headers 2>/dev/null \
     | grep -q 'x-spamd-result'; then
     echo "✅ Configured"
 else
     echo "⚠️  milter_headers is empty — inbound mail will have no spam score."
-    echo "     Check rspamd/local.d/milter_headers.conf is present."
+    echo "     The rspamd image ships this config, so an empty list means the"
+    echo "     image is stale or an override.d file replaced it. Check:"
+    echo "       docker compose exec rspamd rspamadm configdump milter_headers"
+    echo "       ls rspamd/override.d/"
 fi
 
 # The controller owns /learnspam and /learnham. If it still accepts the image

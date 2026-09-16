@@ -65,6 +65,33 @@ reachable from outside the server. The web container talks to it over the
 internal Docker network at `http://rspamd:11334`. To open the Rspamd web UI,
 tunnel to it: `ssh -L 11334:127.0.0.1:11334 you@yourserver`.
 
+### Tuning the spam filter
+
+UNA's Rspamd configuration — spam thresholds, DKIM signing, rate limits,
+greylisting, the Bayes classifier — is built into the `rspamd` image, so there
+are no config files to edit here and nothing to re-apply after an update.
+
+To change a default on this install, drop a `.conf` file in
+`rspamd/override.d/`. It is mounted into the container, it is not tracked by
+git, and it survives every update. Raising the reject threshold, for example,
+is `rspamd/override.d/actions.conf`:
+
+```
+reject = 20;
+add_header = 6;
+greylist = 4;
+```
+
+An override **replaces** the section it names rather than merging into it, so
+restate the whole block, not just the line you are changing. Then:
+
+```bash
+docker compose restart rspamd
+docker compose exec rspamd rspamadm configtest
+docker compose exec rspamd rspamadm configdump actions   # confirm it took
+```
+
+
 ### 3. Configure DNS
 
 Open `YOUR_SETUP.md` (generated during install) and add the DNS records at your registrar.
@@ -102,8 +129,8 @@ Open `https://mail.yourdomain.com` in your browser.
 ```
 
 This will:
-- `git pull` this repository, so you get the current compose file, Rspamd
-  configuration and scripts — not just the container images
+- `git pull` this repository, so you get the current compose file and scripts —
+  not just the container images
 - Add `RSPAMD_PASSWORD` to your `.env` if you do not have one yet
 - Upgrade PostgreSQL 15 to 18 if you are still on 15 (see below)
 - Backup your database
@@ -225,7 +252,7 @@ and exits:
 |---------|---------|
 | **postgres** | Database (PostgreSQL 18) |
 | **postfix** | Mail server (SMTP) |
-| **rspamd** | Spam filtering + DKIM signing |
+| **rspamd** | Spam filtering + DKIM signing. Ships with UNA's configuration built in; see [Tuning the spam filter](#tuning-the-spam-filter). |
 | **redis** | Backing store for Rspamd statistics, rate limits and greylisting |
 | **clamav** | Antivirus scanning of inbound attachments |
 | **nginx** | Web server + SSL termination |

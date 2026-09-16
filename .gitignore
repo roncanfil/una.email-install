@@ -14,3 +14,9 @@ backups/
 # in it are secrets and belong to this install only.
 dkim/*
 !dkim/.gitkeep
+
+# Optional Rspamd overrides for this install. UNA's own Rspamd config ships in
+# the rspamd image, so this directory is empty by default; anything you put in
+# it is local to this server and deliberately not tracked.
+rspamd/override.d/*
+!rspamd/override.d/.gitkeep
