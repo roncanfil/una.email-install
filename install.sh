@@ -90,10 +90,53 @@ fi
 echo "✅ Domain: $DOMAIN"
 echo ""
 
-read -p "Subdomain for web access [webmail]: " MAIL_SUBDOMAIN
-MAIL_SUBDOMAIN="${MAIL_SUBDOMAIN:-webmail}"
-echo "✅ Web UI will be at: https://$MAIL_SUBDOMAIN.$DOMAIN"
+# A single DNS label: what goes to the left of the domain. Not a full hostname
+# and not a bare dot -- `webmail`, not `webmail.example.com`.
+validate_label() {
+    local label=$1
+    if [[ ! $label =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# Two hostnames, two questions, because they are two different things and
+# conflating them is what made the old single MAIL_SUBDOMAIN confusing.
+#
+# The SMTP one is the server's identity on the wire: the MX target, the name
+# Postfix gives in HELO, and the name reverse DNS must return. `mail` is the
+# default because every provider's rDNS documentation, every deliverability
+# checker and every blocklist removal form assumes it. The label itself earns
+# no deliverability points -- `mx` scores exactly the same -- but the PTR
+# record has to agree with whatever is chosen here, and a mismatch is the most
+# common reason a self-hosted server lands in spam.
+read -p "Subdomain for the mail server (MX, HELO, PTR) [mail]: " SMTP_SUBDOMAIN
+SMTP_SUBDOMAIN="${SMTP_SUBDOMAIN:-mail}"
+if ! validate_label "$SMTP_SUBDOMAIN"; then
+    echo "❌ Invalid subdomain. Use a single label such as: mail, mx, smtp"
+    exit 1
+fi
+echo "✅ Mail server will identify as: $SMTP_SUBDOMAIN.$DOMAIN"
 echo ""
+
+read -p "Subdomain for web access [webmail]: " WEB_SUBDOMAIN
+WEB_SUBDOMAIN="${WEB_SUBDOMAIN:-webmail}"
+if ! validate_label "$WEB_SUBDOMAIN"; then
+    echo "❌ Invalid subdomain. Use a single label such as: webmail, mail, app"
+    exit 1
+fi
+echo "✅ Web UI will be at: https://$WEB_SUBDOMAIN.$DOMAIN"
+echo ""
+
+# Answering both the same is allowed and used to be the only option: one name
+# serving SMTP on 25 and HTTPS on 443 is a normal arrangement, and it means one
+# A record and one name on the certificate. Worth saying out loud so it reads
+# as a choice rather than a mistake.
+if [ "$SMTP_SUBDOMAIN" = "$WEB_SUBDOMAIN" ]; then
+    echo "ℹ️  Both services share $SMTP_SUBDOMAIN.$DOMAIN — one A record covers"
+    echo "   SMTP on port 25 and HTTPS on port 443."
+    echo ""
+fi
 
 # ============================================
 # Step 3: Database Password
@@ -269,7 +312,8 @@ cat > .env << EOF
 # Generated: $(date)
 
 DOMAIN=$DOMAIN
-MAIL_SUBDOMAIN=$MAIL_SUBDOMAIN
+SMTP_SUBDOMAIN=$SMTP_SUBDOMAIN
+WEB_SUBDOMAIN=$WEB_SUBDOMAIN
 DB_PASSWORD=$DB_PASSWORD
 RSPAMD_PASSWORD=$RSPAMD_PASSWORD
 SESSION_SECRET=$SESSION_SECRET
@@ -459,9 +503,12 @@ $DKIM_RECORD
 DKIMEOF
 chmod 644 "dkim/una.$DOMAIN.dns.txt"
 
-# Bounce messages come from mail.$DOMAIN, and dkim_signing looks the key up by
-# the From domain. A relative symlink, so it resolves inside the container too.
-ln -sf "una.$DOMAIN.key" "dkim/una.mail.$DOMAIN.key" 2>/dev/null || true
+# Bounce messages come from $SMTP_SUBDOMAIN.$DOMAIN, and dkim_signing looks the
+# key up by the From domain. A relative symlink, so it resolves inside the
+# container too. The name follows SMTP_SUBDOMAIN: point the MX at `mx` and it is
+# mx.$DOMAIN that has to be signable, so the symlink and the second DKIM record
+# in YOUR_SETUP.md below both have to move with it.
+ln -sf "una.$DOMAIN.key" "dkim/una.$SMTP_SUBDOMAIN.$DOMAIN.key" 2>/dev/null || true
 
 # Rspamd reads the mount as its own user, so the directory has to be traversable
 # and the key readable by it. Group-readable plus a world-executable directory
@@ -492,23 +539,27 @@ Tells email servers where to deliver mail for your domain.
 
 | Type | Host | Value | Priority |
 |------|------|-------|----------|
-| MX | @ | mail.$DOMAIN | 10 |
+| MX | @ | $SMTP_SUBDOMAIN.$DOMAIN | 10 |
 
-### 2. A Record$(if [ "$MAIL_SUBDOMAIN" != "mail" ]; then echo 's'; fi)
-Point your hostname$(if [ "$MAIL_SUBDOMAIN" != "mail" ]; then echo 's'; fi) to your server.
+### 2. A Record$(if [ "$WEB_SUBDOMAIN" != "$SMTP_SUBDOMAIN" ]; then echo 's'; fi)
+Point your hostname$(if [ "$WEB_SUBDOMAIN" != "$SMTP_SUBDOMAIN" ]; then echo 's'; fi) to your server.
 
-$(if [ "$MAIL_SUBDOMAIN" = "mail" ]; then
+$(if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
 echo "| Type | Host | Value |"
 echo "|------|------|-------|"
-echo "| A | mail | $SERVER_IP |"
+echo "| A | $SMTP_SUBDOMAIN | $SERVER_IP |"
 echo ""
-echo "Since your web interface and mail server share the same subdomain (mail.$DOMAIN),"
+echo "Since your web interface and mail server share the same subdomain ($SMTP_SUBDOMAIN.$DOMAIN),"
 echo "only one A record is needed. It handles both SMTP (port 25) and HTTPS (port 443)."
 else
 echo "| Type | Host | Value | Purpose |"
 echo "|------|------|-------|---------|"
-echo "| A | mail | $SERVER_IP | Mail server (SMTP) |"
-echo "| A | $MAIL_SUBDOMAIN | $SERVER_IP | Web interface |"
+echo "| A | $SMTP_SUBDOMAIN | $SERVER_IP | Mail server (SMTP) |"
+echo "| A | $WEB_SUBDOMAIN | $SERVER_IP | Web interface |"
+echo ""
+echo "Both are required. The MX record above points at $SMTP_SUBDOMAIN.$DOMAIN, so that"
+echo "name must resolve for mail to be delivered at all; $WEB_SUBDOMAIN.$DOMAIN is where"
+echo "you sign in. Certbot validates both names over port 80."
 fi)
 
 ### 3. SPF Record
@@ -516,7 +567,7 @@ Tells receivers which servers can send email for your domain.
 
 | Type | Host | Value |
 |------|------|-------|
-| TXT | @ | v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all |
+| TXT | @ | v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all |
 
 ### 4. DKIM Records
 Cryptographic signature for email authentication. You need TWO DKIM records:
@@ -524,9 +575,9 @@ Cryptographic signature for email authentication. You need TWO DKIM records:
 | Type | Host | Value |
 |------|------|-------|
 | TXT | una._domainkey | $DKIM_RECORD |
-| TXT | una._domainkey.mail | $DKIM_RECORD |
+| TXT | una._domainkey.$SMTP_SUBDOMAIN | $DKIM_RECORD |
 
-**Note:** Both records use the same value. The second one is for bounce messages sent from mail.$DOMAIN.
+**Note:** Both records use the same value. The second one is for bounce messages sent from $SMTP_SUBDOMAIN.$DOMAIN.
 
 ### 5. DMARC Record
 Policy for handling authentication failures.
@@ -548,11 +599,11 @@ VPS or hosting provider's control panel.
 
 | Server IP | PTR Value |
 |-----------|-----------|
-| $SERVER_IP | mail.$DOMAIN |
+| $SERVER_IP | $SMTP_SUBDOMAIN.$DOMAIN |
 
 ### How to set this up:
-- **Vultr:** Server Settings → IPv4 → click "Reverse DNS" → enter \`mail.$DOMAIN\`
-- **DigitalOcean:** Rename your Droplet to \`mail.$DOMAIN\` (PTR is set automatically from the hostname)
+- **Vultr:** Server Settings → IPv4 → click "Reverse DNS" → enter \`$SMTP_SUBDOMAIN.$DOMAIN\`
+- **DigitalOcean:** Rename your Droplet to \`$SMTP_SUBDOMAIN.$DOMAIN\` (PTR is set automatically from the hostname)
 - **Hetzner:** Server → Networking → click the IP address → set Reverse DNS
 - **Linode/Akamai:** Network tab → IP Addresses → Edit RDNS
 - **Other providers:** Look for "Reverse DNS", "PTR Record", or "RDNS" in your server's network settings. Some providers require you to open a support ticket to configure this.
@@ -569,13 +620,13 @@ dig MX $DOMAIN +short
 \`\`\`
 **Expected output:**
 \`\`\`
-10 mail.$DOMAIN.
+10 $SMTP_SUBDOMAIN.$DOMAIN.
 \`\`\`
 
-$(if [ "$MAIL_SUBDOMAIN" = "mail" ]; then
+$(if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
 echo '\`\`\`bash'
 echo "# Check A record"
-echo "dig A mail.$DOMAIN +short"
+echo "dig A $SMTP_SUBDOMAIN.$DOMAIN +short"
 echo '\`\`\`'
 echo "**Expected output:**"
 echo '\`\`\`'
@@ -584,8 +635,8 @@ echo '\`\`\`'
 else
 echo '\`\`\`bash'
 echo "# Check A records"
-echo "dig A mail.$DOMAIN +short"
-echo "dig A $MAIL_SUBDOMAIN.$DOMAIN +short"
+echo "dig A $SMTP_SUBDOMAIN.$DOMAIN +short"
+echo "dig A $WEB_SUBDOMAIN.$DOMAIN +short"
 echo '\`\`\`'
 echo "**Expected output (both should return):**"
 echo '\`\`\`'
@@ -599,7 +650,7 @@ dig TXT $DOMAIN +short | grep spf
 \`\`\`
 **Expected output:**
 \`\`\`
-"v=spf1 a:mail.$DOMAIN ip4:$SERVER_IP mx ~all"
+"v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"
 \`\`\`
 
 \`\`\`bash
@@ -614,7 +665,7 @@ dig -x $SERVER_IP +short
 \`\`\`
 **Expected output:**
 \`\`\`
-mail.$DOMAIN.
+$SMTP_SUBDOMAIN.$DOMAIN.
 \`\`\`
 
 ---
@@ -628,7 +679,7 @@ Run the following command to obtain a free SSL certificate from Let's Encrypt:
 \`\`\`
 
 This script will:
-- Obtain an SSL certificate for \`$MAIL_SUBDOMAIN.$DOMAIN\`
+- Obtain an SSL certificate covering \`$WEB_SUBDOMAIN.$DOMAIN\` and \`$SMTP_SUBDOMAIN.$DOMAIN\`
 - Configure HTTPS for the web interface (port 443)
 - Configure TLS encryption for the mail server (SMTP)
 - Display your DANE/TLSA hash for the next step
@@ -651,12 +702,12 @@ Now go back to your domain registrar and add this DNS record:
 
 | Type | Host | Value |
 |------|------|-------|
-| TLSA | _25._tcp.mail | 3 1 1 <hash-displayed-by-renew-ssl.sh> |
+| TLSA | _25._tcp.$SMTP_SUBDOMAIN | 3 1 1 <hash-displayed-by-renew-ssl.sh> |
 
 You can retrieve the hash at any time by running:
 
 \`\`\`bash
-openssl x509 -in ./letsencrypt/etc/live/$MAIL_SUBDOMAIN.$DOMAIN/cert.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum
+openssl x509 -in ./letsencrypt/etc/live/$WEB_SUBDOMAIN.$DOMAIN/cert.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum
 \`\`\`
 
 **Note:** The TLSA hash is based on your certificate's public key, which stays the same
@@ -669,7 +720,7 @@ a full reinstallation.
 
 Open your browser and go to:
 
-**https://$MAIL_SUBDOMAIN.$DOMAIN**
+**https://$WEB_SUBDOMAIN.$DOMAIN**
 
 You should see the UNA Email login page with a valid SSL certificate (green padlock).
 Create your account, then go to **Settings** and create your first email address — you'll
@@ -713,8 +764,8 @@ then again after making any DNS changes.
 
 ## Your Installation Details
 
-- **Web Interface:** https://$MAIL_SUBDOMAIN.$DOMAIN
-- **SMTP Server:** mail.$DOMAIN (port 25)
+- **Web Interface:** https://$WEB_SUBDOMAIN.$DOMAIN
+- **SMTP Server:** $SMTP_SUBDOMAIN.$DOMAIN (port 25)
 - **Server IP:** $SERVER_IP
 
 ---
@@ -759,5 +810,5 @@ echo "   Follow the steps in the guide to finish setup."
 echo "   It only takes a few minutes!"
 echo ""
 echo "🌐 Once complete, access your email at:"
-echo "   https://$MAIL_SUBDOMAIN.$DOMAIN"
+echo "   https://$WEB_SUBDOMAIN.$DOMAIN"
 echo ""

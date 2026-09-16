@@ -155,7 +155,15 @@ services:
     container_name: una-postfix
     environment:
       DOMAIN: ${DOMAIN}
-      MAIL_SUBDOMAIN: ${MAIL_SUBDOMAIN:-mail}
+      # The SMTP identity: $myhostname, the HELO/EHLO name and the banner, so
+      # the MX record and the PTR record both have to be this name. `mail` is
+      # the default and was the hardcoded value before it became a setting.
+      SMTP_SUBDOMAIN: ${SMTP_SUBDOMAIN:-mail}
+      # The webmail hostname, needed here only to find the certificate: one
+      # certificate covers both names and certbot files it under the first one.
+      # MAIL_SUBDOMAIN is the old spelling of WEB_SUBDOMAIN -- it always meant
+      # the web name -- so an .env written before the rename still resolves.
+      WEB_SUBDOMAIN: ${WEB_SUBDOMAIN:-${MAIL_SUBDOMAIN:-webmail}}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: una_email
@@ -223,7 +231,10 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN}
-      - MAIL_SUBDOMAIN=${MAIL_SUBDOMAIN:-mail}
+      # Nginx serves the webmail UI and nothing else; the SMTP hostname is not
+      # its business. See the postfix service for why MAIL_SUBDOMAIN is still
+      # read as a fallback.
+      - WEB_SUBDOMAIN=${WEB_SUBDOMAIN:-${MAIL_SUBDOMAIN:-webmail}}
     depends_on:
       - web
     restart: unless-stopped
