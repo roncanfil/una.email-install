@@ -129,9 +129,24 @@ docker compose exec rspamd rspamadm configdump actions   # confirm it took
 
 ### 3. Configure DNS
 
-Open `YOUR_SETUP.md` (generated during install) and add the DNS records at your
-registrar. It is written for the subdomains you actually chose, so follow that
-file rather than this summary.
+The installer writes your records two ways. The browser one is easier to work
+from — every value has a copy button and it remembers which steps you have
+finished:
+
+```
+http://<your-server-ip>/setup
+```
+
+Plain HTTP and a bare IP, deliberately: the records on that page are what make
+your hostname resolve and your certificate issuable, so the guide cannot live
+behind either of them. Nginx serves it from port 80 on a server with no
+certificate yet. Nothing on it is private — the domain, the server's own IP and
+a DKIM *public* key are all about to be published in DNS anyway. Once TLS is up
+it is also at `https://<web hostname>/setup`.
+
+The same content is on the server as `YOUR_SETUP.md` for reading over SSH. Both
+are written for the subdomains you actually chose, so follow them rather than
+this summary.
 
 With the defaults (`SMTP_SUBDOMAIN=mail`, `WEB_SUBDOMAIN=webmail`):
 

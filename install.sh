@@ -852,6 +852,389 @@ echo "✅ Created YOUR_SETUP.md"
 echo ""
 
 # ============================================
+# Step 8b: Generate the HTML setup guide
+# ============================================
+# The same content as YOUR_SETUP.md, as a page Nginx serves on port 80 at
+# http://$SERVER_IP/setup.
+#
+# Port 80 and an IP address, deliberately. Every record below has to be in DNS
+# before https://$WEB_SUBDOMAIN.$DOMAIN resolves or a certificate can be
+# issued, so a guide that lived inside the web app could only be read after you
+# no longer needed it. ./web-root is already bind-mounted into the nginx
+# container for ACME challenges, so writing here needs no new mount.
+#
+# Everything on the page is public by design -- the domain, the server's own IP
+# and a DKIM *public* key are all things you are about to publish in DNS. No
+# password, no private key, and nothing from the mail store.
+echo "Step 8b: Generating Setup Page"
+echo "------------------------------"
+
+mkdir -p web-root/setup
+
+# The page's variable parts, built here rather than inline so the heredoc below
+# stays readable: the A-record rows (one host or two), the dig commands, and
+# the singular/plural of "record resolves".
+if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
+    A_PLURAL=""
+    A_VERB="s"
+    A_RECORD_ROWS="      <tr>
+        <td data-label=\"Type\">A</td><td data-label=\"Host\">$SMTP_SUBDOMAIN</td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Mail and web share this name: SMTP on port 25, HTTPS on 443.</div></td>
+      </tr>"
+    VERIFY_COMMANDS="dig MX $DOMAIN +short          # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
+dig A $SMTP_SUBDOMAIN.$DOMAIN +short   # expect: $SERVER_IP
+dig TXT $DOMAIN +short | grep spf
+dig TXT una._domainkey.$DOMAIN +short
+dig -x $SERVER_IP +short        # expect: $SMTP_SUBDOMAIN.$DOMAIN."
+    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep spf; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+else
+    A_PLURAL="s"
+    A_VERB=""
+    A_RECORD_ROWS="      <tr>
+        <td data-label=\"Type\">A</td><td data-label=\"Host\">$SMTP_SUBDOMAIN</td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Mail server. The MX above points here, so mail cannot be delivered until this resolves.</div></td>
+      </tr>
+      <tr>
+        <td data-label=\"Type\">A</td><td data-label=\"Host\">$WEB_SUBDOMAIN</td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Web interface. Both names are validated when the certificate is issued.</div></td>
+      </tr>"
+    VERIFY_COMMANDS="dig MX $DOMAIN +short           # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
+dig A $SMTP_SUBDOMAIN.$DOMAIN +short    # expect: $SERVER_IP
+dig A $WEB_SUBDOMAIN.$DOMAIN +short     # expect: $SERVER_IP
+dig TXT $DOMAIN +short | grep spf
+dig TXT una._domainkey.$DOMAIN +short
+dig -x $SERVER_IP +short         # expect: $SMTP_SUBDOMAIN.$DOMAIN."
+    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig A $WEB_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep spf; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+fi
+
+
+# Unquoted heredoc: $VARIABLES are substituted. So there are no backticks and
+# no unescaped $ anywhere in the CSS or JS below -- a backtick would be command
+# substitution and would break the page in ways that are tedious to find.
+cat > web-root/setup/index.html << HTMLEOF
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>UNA Email setup - $DOMAIN</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #17191c;
+    --muted: #5c636e;
+    --line: #e2e5ea;
+    --accent: #2f6df6;
+    --code-bg: #f1f3f6;
+    --ok: #1a7f4b;
+    --warn-bg: #fff6e5;
+    --warn-line: #f0c674;
+    --warn-ink: #6b4e00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1c1f24;
+      --ink: #e8eaed;
+      --muted: #9aa2ae;
+      --line: #2c313a;
+      --accent: #6ea0ff;
+      --code-bg: #23272e;
+      --ok: #5fd39b;
+      --warn-bg: #2a2313;
+      --warn-line: #6b5a23;
+      --warn-ink: #f0d99a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 96px;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { margin-bottom: 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 {
+    font-size: 17px; margin: 0 0 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .step {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .step.done { opacity: 0.55; }
+  .num {
+    flex: 0 0 auto;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 13px; font-weight: 600;
+    display: grid; place-items: center;
+  }
+  .step.done .num { background: var(--ok); }
+  label.chk {
+    margin-left: auto; font-size: 13px; font-weight: 400;
+    color: var(--muted); display: flex; align-items: center; gap: 6px;
+    cursor: pointer; user-select: none;
+  }
+  p { margin: 0 0 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.val { width: 100%; }
+  .copyrow { display: flex; align-items: flex-start; gap: 8px; }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    padding: 3px 6px;
+    border-radius: 5px;
+    word-break: break-all;
+    flex: 1 1 auto;
+  }
+  pre {
+    background: var(--code-bg); border-radius: 8px; padding: 12px;
+    overflow-x: auto; font-size: 13px; margin: 10px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  button.copy {
+    flex: 0 0 auto;
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  button.copy:hover { border-color: var(--accent); color: var(--accent); }
+  button.copy.ok { border-color: var(--ok); color: var(--ok); }
+  .note {
+    background: var(--warn-bg); border: 1px solid var(--warn-line);
+    color: var(--warn-ink);
+    border-radius: 8px; padding: 12px 14px; font-size: 14px; margin: 12px 0;
+  }
+  .note strong { font-weight: 600; }
+  ul { margin: 10px 0; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+  footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
+  a { color: var(--accent); }
+  @media (max-width: 560px) {
+    table, thead, tbody, th, td, tr { display: block; }
+    thead { display: none; }
+    td { border-bottom: 0; padding: 4px 0; }
+    tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>UNA Email setup</h1>
+  <div class="sub">$DOMAIN &middot; server $SERVER_IP &middot; generated $(date)</div>
+</header>
+
+<div class="note">
+  This page is served over plain HTTP from your server's IP, because none of it
+  works until the DNS below exists. Everything on it is public information you
+  are about to publish in DNS. Once your certificate is issued it is also at
+  <a href="https://$WEB_SUBDOMAIN.$DOMAIN/setup">https://$WEB_SUBDOMAIN.$DOMAIN/setup</a>.
+</div>
+
+<section class="step" id="s1">
+  <h2><span class="num">1</span> DNS records
+    <label class="chk"><input type="checkbox" data-step="s1"> done</label>
+  </h2>
+  <p class="muted">Add these at your domain registrar (Cloudflare, Namecheap, GoDaddy&hellip;).</p>
+  <table>
+    <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr>
+        <td data-label="Type">MX</td><td data-label="Host">@</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div><div class="muted">Priority 10</div></td>
+      </tr>
+$A_RECORD_ROWS
+      <tr>
+        <td data-label="Type">TXT</td><td data-label="Host">@</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all">copy</button></div><div class="muted">SPF</div></td>
+      </tr>
+      <tr>
+        <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD">copy</button></div><div class="muted">DKIM</div></td>
+      </tr>
+      <tr>
+        <td data-label="Type">TXT</td><td data-label="Host">una._domainkey.$SMTP_SUBDOMAIN</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD">copy</button></div><div class="muted">The same value again. Bounce messages are sent from $SMTP_SUBDOMAIN.$DOMAIN and are signed with this key.</div></td>
+      </tr>
+      <tr>
+        <td data-label="Type">TXT</td><td data-label="Host">_dmarc</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100">copy</button></div><div class="muted">DMARC</div></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="step" id="s2">
+  <h2><span class="num">2</span> Reverse DNS (PTR)
+    <label class="chk"><input type="checkbox" data-step="s2"> done</label>
+  </h2>
+  <p>Set at your <strong>VPS provider</strong>, not your registrar. Without it most
+     large providers will treat your mail as suspect.</p>
+  <table>
+    <thead><tr><th>Server IP</th><th>PTR value</th></tr></thead>
+    <tbody><tr>
+      <td data-label="Server IP"><code>$SERVER_IP</code></td>
+      <td data-label="PTR value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div></td>
+    </tr></tbody>
+  </table>
+  <ul>
+    <li><strong>Vultr</strong> &mdash; Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
+    <li><strong>DigitalOcean</strong> &mdash; rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
+    <li><strong>Hetzner</strong> &mdash; Server &rarr; Networking &rarr; click the IP &rarr; Reverse DNS</li>
+    <li><strong>Linode/Akamai</strong> &mdash; Network &rarr; IP Addresses &rarr; Edit RDNS</li>
+    <li>Others: look for &ldquo;Reverse DNS&rdquo;, &ldquo;PTR&rdquo; or &ldquo;RDNS&rdquo;. Some require a support ticket.</li>
+  </ul>
+</section>
+
+<section class="step" id="s3">
+  <h2><span class="num">3</span> Verify propagation
+    <label class="chk"><input type="checkbox" data-step="s3"> done</label>
+  </h2>
+  <p class="muted">Wait 5&ndash;30 minutes, then run these from any machine.</p>
+  <pre>$VERIFY_COMMANDS</pre>
+  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE">copy</button></div>
+</section>
+
+<section class="step" id="s4">
+  <h2><span class="num">4</span> SSL certificate
+    <label class="chk"><input type="checkbox" data-step="s4"> done</label>
+  </h2>
+  <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
+  <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh">copy</button></div>
+  <p class="muted" style="margin-top:12px">One certificate is issued covering
+     <strong>$WEB_SUBDOMAIN.$DOMAIN</strong> and <strong>$SMTP_SUBDOMAIN.$DOMAIN</strong>.
+     Both names are validated over port 80, and the same certificate is used by
+     Nginx on 443 and by Postfix for STARTTLS on 25. Let's Encrypt allows 5
+     certificates per domain per week.</p>
+</section>
+
+<section class="step" id="s5">
+  <h2><span class="num">5</span> DANE / TLSA (optional)
+    <label class="chk"><input type="checkbox" data-step="s5"> done</label>
+  </h2>
+  <p><code>./renew-ssl.sh</code> prints your TLSA hash when it finishes. Add it as:</p>
+  <table>
+    <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
+    <tbody><tr>
+      <td data-label="Type">TLSA</td>
+      <td data-label="Host" class="val"><div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN">copy</button></div></td>
+      <td data-label="Value"><code>3 1 1 &lt;hash from renew-ssl.sh&gt;</code></td>
+    </tr></tbody>
+  </table>
+  <p class="muted">The hash is the certificate's public key and survives renewals
+     (<code>--reuse-key</code>). You only replace it after a full reinstall.</p>
+</section>
+
+<section class="step" id="s6">
+  <h2><span class="num">6</span> Sign in and test
+    <label class="chk"><input type="checkbox" data-step="s6"> done</label>
+  </h2>
+  <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>,
+     create your account, then add your first address under Settings.</p>
+  <p>Then send a message to <a href="https://mail-tester.com/">mail-tester.com</a>
+     &mdash; a few sentences of ordinary text, not one word &mdash; and check the
+     score. SPF, DKIM, DMARC, PTR and blacklists should all be green. Below 8,
+     the report names the record that is wrong. You get 3 free tests a day.</p>
+</section>
+
+<footer>
+  Generated by install.sh &middot; also on the server as
+  <span class="mono">YOUR_SETUP.md</span>
+</footer>
+
+</div>
+<script>
+// No template literals and no backticks anywhere: this file is written by a
+// bash heredoc that would treat them as command substitution.
+(function () {
+  // navigator.clipboard is undefined on plain HTTP, which is exactly how this
+  // page is served before a certificate exists. The textarea fallback is the
+  // only thing that works here, so it is not dead code.
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('copy failed'));
+    });
+  }
+
+  document.querySelectorAll('button.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      copyText(btn.getAttribute('data-copy')).then(function () {
+        var old = btn.textContent;
+        btn.textContent = 'copied';
+        btn.classList.add('ok');
+        setTimeout(function () {
+          btn.textContent = old;
+          btn.classList.remove('ok');
+        }, 1400);
+      }, function () {
+        btn.textContent = 'select it';
+      });
+    });
+  });
+
+  // Progress is per-browser and per-origin. It is a convenience, not state the
+  // server knows about, so a blocked or cleared localStorage just means the
+  // boxes start unticked.
+  var KEY = 'una-setup-$DOMAIN';
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+
+  document.querySelectorAll('input[data-step]').forEach(function (box) {
+    var id = box.getAttribute('data-step');
+    var section = document.getElementById(id);
+    box.checked = !!saved[id];
+    if (box.checked) { section.classList.add('done'); }
+    box.addEventListener('change', function () {
+      section.classList.toggle('done', box.checked);
+      saved[id] = box.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+})();
+</script>
+</body>
+</html>
+HTMLEOF
+
+chmod 644 web-root/setup/index.html
+chmod 755 web-root web-root/setup
+
+echo "✅ Created the setup page"
+echo ""
+
+# ============================================
 # Installation Complete
 # ============================================
 echo ""
@@ -859,12 +1242,15 @@ echo "=========================================="
 echo "     ✨ Installation Complete! ✨"
 echo "=========================================="
 echo ""
-echo "📄 Your personalized setup guide has been created:"
+echo "📄 Your personalized setup guide is ready. Open it in a browser:"
 echo ""
-echo "   cat YOUR_SETUP.md"
+echo "   http://$SERVER_IP/setup"
 echo ""
-echo "   Follow the steps in the guide to finish setup."
-echo "   It only takes a few minutes!"
+echo "   Plain HTTP and an IP address on purpose -- the records it gives you"
+echo "   are what make the hostname and the certificate work. Every value has"
+echo "   a copy button, and it remembers which steps you have finished."
+echo ""
+echo "   Same content in the terminal:  cat YOUR_SETUP.md"
 echo ""
 echo "🌐 Once complete, access your email at:"
 echo "   https://$WEB_SUBDOMAIN.$DOMAIN"
