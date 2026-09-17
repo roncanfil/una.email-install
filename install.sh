@@ -337,7 +337,6 @@ echo "✅ Session secret: generated, in .env"
 echo "✅ Web Push VAPID keypair: generated, in .env"
 echo "✅ Outbound relay key: generated, in .env"
 echo "✅ Outbound mail: direct to each recipient (port 25)"
-echo "   Change it in Settings -> Sending once you are signed in."
 
 # Set permissions
 chmod +x renew-ssl.sh 2>/dev/null || true
@@ -1035,7 +1034,7 @@ mkdir -p web-root/dns-setup
 # data-copy attribute verbatim, so it must not contain a double quote -- none
 # of the dig lines do, and a > or | is fine inside an attribute value.
 verify_row() {
-    printf '  <div class="field">\n    <div class="fname">%s</div>\n    <div class="fval"><div class="copyrow"><code>%s</code><button class="copy" data-copy="%s">copy</button></div><div class="muted" style="margin-top:4px">%s</div></div>\n  </div>\n' \
+    printf '  <div class="field">\n    <div class="fname">%s</div>\n    <div class="fval"><div class="copyrow"><code>%s</code><button class="copy" data-copy="%s"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted" style="margin-top:4px">%s</div></div>\n  </div>\n' \
         "$1" "$2" "$2" "$3"
 }
 
@@ -1060,7 +1059,7 @@ if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
     A_VERB="s"
     A_RECORD_ROWS="      <tr>
         <td data-label=\"Type\">A</td><td data-label=\"Host\">$SMTP_SUBDOMAIN</td>
-        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Mail and web share this name: SMTP on port 25, HTTPS on 443.</div></td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\"><span class=\"lbl lbl-idle\">copy</span><span class=\"lbl lbl-done\">copied</span></button></div><div class=\"muted\">Mail and web share this name: SMTP on port 25, HTTPS on 443.</div></td>
       </tr>"
     VERIFY_COMMANDS="dig MX $DOMAIN +short          # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
 dig A $SMTP_SUBDOMAIN.$DOMAIN +short   # expect: $SERVER_IP
@@ -1078,11 +1077,11 @@ else
     A_VERB=""
     A_RECORD_ROWS="      <tr>
         <td data-label=\"Type\">A</td><td data-label=\"Host\">$SMTP_SUBDOMAIN</td>
-        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Mail server. The MX above points here, so mail cannot be delivered until this resolves.</div></td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\"><span class=\"lbl lbl-idle\">copy</span><span class=\"lbl lbl-done\">copied</span></button></div><div class=\"muted\">Mail server. The MX above points here, so mail cannot be delivered until this resolves.</div></td>
       </tr>
       <tr>
         <td data-label=\"Type\">A</td><td data-label=\"Host\">$WEB_SUBDOMAIN</td>
-        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\">copy</button></div><div class=\"muted\">Web interface. Both names are validated when the certificate is issued.</div></td>
+        <td data-label=\"Value\" class=\"val\"><div class=\"copyrow\"><code>$SERVER_IP</code><button class=\"copy\" data-copy=\"$SERVER_IP\"><span class=\"lbl lbl-idle\">copy</span><span class=\"lbl lbl-done\">copied</span></button></div><div class=\"muted\">Web interface. Both names are validated when the certificate is issued.</div></td>
       </tr>"
     VERIFY_COMMANDS="dig MX $DOMAIN +short           # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
 dig A $SMTP_SUBDOMAIN.$DOMAIN +short    # expect: $SERVER_IP
@@ -1112,127 +1111,475 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 <meta name="robots" content="noindex, nofollow">
 <title>UNA Email setup - $DOMAIN</title>
 <style>
+  /* Design tokens.
+     ---------------------------------------------------------------------
+     One scale, one set of curves. The page is read once, on a bad day,
+     usually while someone is switching between this and a registrar's
+     control panel -- so the job is hierarchy and calm, not decoration. */
   :root {
     color-scheme: light dark;
-    --bg: #f6f7f9;
-    --card: #ffffff;
-    --ink: #17191c;
-    --muted: #5c636e;
-    --line: #e2e5ea;
+
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f2f4f7;
+    --ink: #11151a;
+    --ink-2: #3d4652;
+    --muted: #6b7482;
+    --line: #e4e8ee;
+    --line-strong: #d3d9e2;
     --accent: #2f6df6;
-    --code-bg: #f1f3f6;
-    --ok: #1a7f4b;
-    --warn-bg: #fff6e5;
+    --accent-ink: #ffffff;
+    --ok: #0f7b46;
+    --warn-bg: #fff8ec;
     --warn-line: #f0c674;
-    --warn-ink: #6b4e00;
+    --warn-ink: #6b4a00;
+
+    /* Strong curves. The built-in CSS easings are too weak to read as
+       intentional; never ease-in, which delays the frame the eye is on. */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --radius-card: 14px;
+    --radius-inner: 8px;
+    --pad-card: 6px;
+
+    /* Borders carry structure; depth comes from layered shadow. */
+    --shadow-card:
+      0 1px 2px oklch(0 0 0 / 0.04),
+      0 4px 12px oklch(0 0 0 / 0.04);
+    --shadow-raised:
+      0 1px 2px oklch(0 0 0 / 0.06),
+      0 8px 24px oklch(0 0 0 / 0.06);
   }
+
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14161a;
-      --card: #1c1f24;
-      --ink: #e8eaed;
-      --muted: #9aa2ae;
-      --line: #2c313a;
-      --accent: #6ea0ff;
-      --code-bg: #23272e;
+      --bg: #0e1116;
+      --surface: #161a21;
+      --surface-2: #1d222a;
+      --ink: #e8ecf1;
+      --ink-2: #b7c0cc;
+      --muted: #8b95a3;
+      --line: #262c36;
+      --line-strong: #333b47;
+      --accent: #7aa5ff;
+      --accent-ink: #0e1116;
       --ok: #5fd39b;
-      --warn-bg: #2a2313;
-      --warn-line: #6b5a23;
-      --warn-ink: #f0d99a;
+      --warn-bg: #241d10;
+      --warn-line: #5c4d20;
+      --warn-ink: #edd7a2;
+      --shadow-card:
+        0 1px 2px oklch(0 0 0 / 0.3),
+        0 4px 12px oklch(0 0 0 / 0.25);
+      --shadow-raised:
+        0 1px 2px oklch(0 0 0 / 0.35),
+        0 8px 24px oklch(0 0 0 / 0.35);
     }
   }
+
   * { box-sizing: border-box; }
+
   body {
     margin: 0;
-    padding: 32px 16px 96px;
+    padding: 0 20px 96px;
     background: var(--bg);
     color: var(--ink);
-    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  .wrap { max-width: 860px; margin: 0 auto; }
-  header { margin-bottom: 28px; }
-  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
-  .sub { color: var(--muted); font-size: 14px; }
-  h2 {
-    font-size: 17px; margin: 0 0 14px;
-    display: flex; align-items: center; gap: 10px;
+
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  /* ---- Masthead ---------------------------------------------------- */
+
+  header { padding: 56px 0 28px; }
+  h1 {
+    font-size: 30px;
+    line-height: 1.15;
+    letter-spacing: -0.021em;
+    margin: 0 0 10px;
+    font-weight: 640;
   }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: center;
+  }
+  .sub .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+
+  /* ---- Step cards -------------------------------------------------- */
+
   .step {
-    background: var(--card);
+    background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
+    /* Outer radius = inner radius + padding: 8 + 6 = 14. Nested corners
+       that do not agree are the single most common reason a layout reads
+       as slightly wrong without anyone being able to say why. */
+    border-radius: var(--radius-card);
+    padding: 22px var(--pad-card) var(--pad-card);
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
   }
+  .step > *:not(.fields):not(table):not(pre):not(.note):not(details) {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .step > .fields, .step > table, .step > pre, .step > .note, .step > details {
+    margin-left: var(--pad-card);
+    margin-right: var(--pad-card);
+    width: calc(100% - var(--pad-card) * 2);
+  }
+
+  h2 {
+    font-size: 17px;
+    font-weight: 620;
+    letter-spacing: -0.011em;
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    line-height: 1.3;
+  }
+
+  /* The step number. Optically centred: the digit's own bearing sits it a
+     hair high inside a circle, so the box is nudged down by half a pixel
+     rather than the glyph being left to look wrong. */
   .num {
     flex: 0 0 auto;
-    width: 24px; height: 24px; border-radius: 50%;
-    background: var(--accent); color: #fff;
-    font-size: 13px; font-weight: 600;
-    display: grid; place-items: center;
+    width: 25px; height: 25px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 12.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    display: grid;
+    place-items: center;
+    transform: translateY(0.5px);
   }
   .num.alert { background: var(--warn-line); color: var(--warn-ink); }
-  .fields { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .field { display: flex; gap: 12px; padding: 9px 10px; border-bottom: 1px solid var(--line); align-items: flex-start; }
-  .field:last-child { border-bottom: 0; }
-  .fname { flex: 0 0 150px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; padding-top: 4px; }
-  .fval { flex: 1 1 auto; min-width: 0; }
-  @media (max-width: 560px) { .field { flex-direction: column; gap: 4px; } .fname { flex: none; padding-top: 0; } }
-  details { margin-top: 10px; }
-  summary {
-    cursor: pointer; font-size: 14px; font-weight: 500;
-    padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
-    background: var(--code-bg); list-style-position: inside;
+
+  h3 {
+    font-size: 14.5px;
+    font-weight: 620;
+    letter-spacing: -0.006em;
+    margin: 22px 0 8px;
+    color: var(--ink);
   }
-  summary:hover { border-color: var(--accent); color: var(--accent); }
-  details[open] summary { margin-bottom: 12px; }
-  h3 { font-size: 15px; margin: 20px 0 8px; }
-  p { margin: 0 0 12px; }
-  .muted { color: var(--muted); font-size: 14px; }
-  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
-  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
-  tr:last-child td { border-bottom: 0; }
-  td.val { width: 100%; }
-  .copyrow { display: flex; align-items: flex-start; gap: 8px; }
+
+  p { margin: 0 0 12px; color: var(--ink-2); max-width: 68ch; }
+  .muted { color: var(--muted); font-size: 13.5px; }
+  strong { color: var(--ink); font-weight: 600; }
+
+  ul, ol { margin: 10px 0; padding-left: 20px; color: var(--ink-2); max-width: 68ch; }
+  li { margin-bottom: 6px; }
+  li::marker { color: var(--muted); }
+
+  /* ---- Code ------------------------------------------------------- */
+
   code, .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-    background: var(--code-bg);
-    padding: 3px 6px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    letter-spacing: -0.01em;
+  }
+  p code, li code, td code, .muted code {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     border-radius: 5px;
-    word-break: break-all;
-    flex: 1 1 auto;
+    padding: 1px 5px;
+    color: var(--ink);
+    white-space: nowrap;
   }
   pre {
-    background: var(--code-bg); border-radius: 8px; padding: 12px;
-    overflow-x: auto; font-size: 13px; margin: 10px 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-inner);
+    padding: 13px 14px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
+    margin: 12px 0;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--ink-2);
   }
+
+  /* ---- Copyable rows ---------------------------------------------- */
+
+  .copyrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-inner);
+    padding: 7px 7px 7px 11px;
+    margin: 8px 0;
+  }
+  .copyrow > code, .copyrow > .mono {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  /* The only control on the page, so it carries all of its weight. */
   button.copy {
     flex: 0 0 auto;
-    border: 1px solid var(--line); background: var(--card); color: var(--muted);
-    border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer;
-    font-family: inherit;
+    position: relative;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink-2);
+    border-radius: 6px;
+    padding: 5px 11px;
+    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+    /* Name the properties. "all" would animate layout too and is a
+       standing invitation to jank. 140ms: press feedback belongs under
+       160ms or it stops reading as a response to the click. */
+    transition:
+      transform 140ms var(--ease-out),
+      border-color 140ms var(--ease-out),
+      color 140ms var(--ease-out),
+      background-color 140ms var(--ease-out);
+    -webkit-tap-highlight-color: transparent;
   }
-  button.copy:hover { border-color: var(--accent); color: var(--accent); }
-  button.copy.ok { border-color: var(--ok); color: var(--ok); }
+  /* Gated: a touch device fires hover on tap, so an ungated hover state
+     sticks after the finger lifts. */
+  @media (hover: hover) and (pointer: fine) {
+    button.copy:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface);
+    }
+  }
+  button.copy:active { transform: scale(0.96); }
+  button.copy:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  button.copy.ok {
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+
+  /* Both labels live in the DOM and cross-fade, so the swap has an exit as
+     well as an enter and the button never changes width mid-press. */
+  button.copy .lbl {
+    display: block;
+    transition:
+      opacity 140ms var(--ease-out),
+      transform 140ms var(--ease-out),
+      filter 140ms var(--ease-out);
+  }
+  button.copy .lbl-done {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    /* Not scale(0): nothing in the world appears out of nothing. */
+    transform: scale(0.25);
+    filter: blur(4px);
+  }
+  button.copy.ok .lbl-idle {
+    opacity: 0;
+    transform: scale(0.25);
+    filter: blur(4px);
+  }
+  button.copy.ok .lbl-done {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+
+  /* ---- Field lists ------------------------------------------------- */
+
+  .fields {
+    margin: 14px 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-inner);
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .field {
+    display: flex;
+    gap: 14px;
+    padding: 12px 13px;
+    border-bottom: 1px solid var(--line);
+    align-items: flex-start;
+  }
+  .field:last-child { border-bottom: 0; }
+  .fname {
+    flex: 0 0 156px;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    color: var(--muted);
+    font-weight: 650;
+    padding-top: 7px;
+  }
+  .fval { flex: 1 1 auto; min-width: 0; }
+  .fval .copyrow:first-child { margin-top: 0; }
+  .fval > .muted:last-child { margin-bottom: 0; }
+
+  /* ---- Tables ------------------------------------------------------ */
+
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 14px 0;
+    font-size: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-inner);
+    overflow: hidden;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.045em;
+    color: var(--muted);
+    font-weight: 650;
+    background: var(--surface-2);
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.val { width: 100%; }
+  td .copyrow { margin: 0; }
+  td .muted { margin-top: 5px; display: block; }
+
+  /* ---- Callout ----------------------------------------------------- */
+
   .note {
-    background: var(--warn-bg); border: 1px solid var(--warn-line);
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
     color: var(--warn-ink);
-    border-radius: 8px; padding: 12px 14px; font-size: 14px; margin: 12px 0;
+    border-radius: var(--radius-inner);
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 14px 0;
   }
-  .note strong { font-weight: 600; }
-  ul { margin: 10px 0; padding-left: 20px; }
-  li { margin-bottom: 5px; }
-  footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 28px; }
-  a { color: var(--accent); }
-  @media (max-width: 560px) {
+  .note strong { color: inherit; font-weight: 650; }
+  .note code { background: oklch(0 0 0 / 0.05); border-color: oklch(0 0 0 / 0.08); color: inherit; }
+  @media (prefers-color-scheme: dark) {
+    .note code { background: oklch(1 0 0 / 0.07); border-color: oklch(1 0 0 / 0.1); }
+  }
+
+  /* ---- Disclosure -------------------------------------------------- */
+
+  details { margin: 14px 0; }
+  summary {
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 560;
+    color: var(--ink-2);
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-inner);
+    background: var(--surface-2);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+    -webkit-tap-highlight-color: transparent;
+  }
+  summary::-webkit-details-marker { display: none; }
+  /* The chevron is the state cue, so motion is never the only signal. */
+  summary::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg) translate(-1px, -1px);
+    opacity: 0.6;
+    transition: transform 160ms var(--ease-out);
+  }
+  details[open] summary::before { transform: rotate(45deg) translate(-2px, -2px); }
+  @media (hover: hover) and (pointer: fine) {
+    summary:hover { border-color: var(--line-strong); color: var(--ink); }
+  }
+  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  details[open] summary { margin-bottom: 14px; }
+  details > *:not(summary) { padding: 0 2px; }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    margin-top: 32px;
+    padding-bottom: 8px;
+  }
+
+  /* ---- Entrance ----------------------------------------------------
+     Staged and seen once, which is the case where sequence is worth its
+     cost: the cards arrive in reading order rather than all at once.
+     Short delays -- anything longer reads as the page being slow. */
+  .step, header {
+    opacity: 0;
+    transform: translateY(6px);
+    animation: rise 420ms var(--ease-out) forwards;
+  }
+  header { animation-delay: 0ms; }
+  .step:nth-of-type(1) { animation-delay: 45ms; }
+  .step:nth-of-type(2) { animation-delay: 85ms; }
+  .step:nth-of-type(3) { animation-delay: 120ms; }
+  .step:nth-of-type(4) { animation-delay: 150ms; }
+  .step:nth-of-type(n+5) { animation-delay: 175ms; }
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Reduced motion means gentler, not none: the fade stays because it
+     aids comprehension, the movement goes. */
+  @media (prefers-reduced-motion: reduce) {
+    .step, header {
+      transform: none;
+      animation: fade 200ms ease forwards;
+    }
+    @keyframes fade { to { opacity: 1; } }
+    button.copy:active { transform: none; }
+    button.copy .lbl, summary::before { transition-duration: 1ms; }
+  }
+
+  /* ---- Narrow ------------------------------------------------------ */
+
+  @media (max-width: 600px) {
+    body { padding: 0 14px 72px; }
+    header { padding: 36px 0 22px; }
+    h1 { font-size: 25px; }
+    .step { padding-top: 18px; }
+    .field { flex-direction: column; gap: 5px; }
+    .fname { flex: none; padding-top: 0; }
     table, thead, tbody, th, td, tr { display: block; }
     thead { display: none; }
-    td { border-bottom: 0; padding: 4px 0; }
+    td { border-bottom: 0; padding: 4px 13px; }
     tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
-    td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.04em; }
+    tr:last-child { border-bottom: 0; }
+    td::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.045em;
+      font-weight: 650;
+      margin-bottom: 3px;
+    }
   }
 </style>
 </head>
@@ -1241,7 +1588,11 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 
 <header>
   <h1>UNA Email setup</h1>
-  <div class="sub">$DOMAIN &middot; server $SERVER_IP &middot; generated $(date)</div>
+  <div class="sub">
+    <span>$DOMAIN</span><span class="dot"></span>
+    <span>server $SERVER_IP</span><span class="dot"></span>
+    <span>generated $(date "+%e %B %Y, %H:%M")</span>
+  </div>
 </header>
 
 <div class="note">
@@ -1256,7 +1607,7 @@ cat > web-root/dns-setup/index.html << HTMLEOF
   <p class="muted">If $DOMAIN is a brand-new domain with an empty DNS zone, skip
      this and start at step 1.</p>
   <details>
-  <summary>Open this if $DOMAIN already has a website or email somewhere</summary>
+  <summary>Read this if $DOMAIN already has a website or email somewhere else</summary>
   <p>If $DOMAIN already has a website or a mailbox somewhere else &mdash; GoDaddy,
      Squarespace, Wix, Google Workspace, Microsoft&nbsp;365 &mdash; UNA runs alongside it.</p>
   <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
@@ -1267,7 +1618,7 @@ cat > web-root/dns-setup/index.html << HTMLEOF
      them next to what is already published does not work &mdash; it breaks both. Check
      what exists first:</p>
   <pre>$PRECHECK_COMMANDS</pre>
-  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE">copy</button></div>
+  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 
   <h3>MX &mdash; delete the existing records first</h3>
   <p>Mail for <strong>all of</strong> $DOMAIN moves to UNA. Leave your old provider's MX
@@ -1284,7 +1635,7 @@ cat > web-root/dns-setup/index.html << HTMLEOF
      adding UNA's. An existing GoDaddy record like this:</p>
   <pre>v=spf1 include:secureserver.net -all</pre>
   <p>becomes:</p>
-  <div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all">copy</button></div>
+  <div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
   <p class="muted">Use whichever <code>include:</code> terms your own record already has.
      Keep the <code>all</code> mechanism last, and leave it as <code>~all</code> while you
      are testing.</p>
@@ -1321,24 +1672,24 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     <tbody>
       <tr>
         <td data-label="Type">MX</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div><div class="muted">Priority 10. Delete any existing MX records on @ first &mdash; two providers side by side split your inbound mail.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Priority 10. Delete any existing MX records on @ first &mdash; two providers side by side split your inbound mail.</div></td>
       </tr>
 $A_RECORD_ROWS
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all">copy</button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain &mdash; if you already have one, merge into it rather than adding this.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain &mdash; if you already have one, merge into it rather than adding this.</div></td>
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD">copy</button></div><div class="muted">DKIM</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DKIM</div></td>
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">una._domainkey.$SMTP_SUBDOMAIN</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD">copy</button></div><div class="muted">The same value again. Bounce messages are sent from $SMTP_SUBDOMAIN.$DOMAIN and are signed with this key.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">The same value again. Bounce messages are sent from $SMTP_SUBDOMAIN.$DOMAIN and are signed with this key.</div></td>
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">_dmarc</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100">copy</button></div><div class="muted">DMARC. One record only; replace an existing _dmarc value rather than adding a second.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DMARC. One record only; replace an existing _dmarc value rather than adding a second.</div></td>
       </tr>
     </tbody>
   </table>
@@ -1355,11 +1706,11 @@ $A_RECORD_ROWS
   <div class="fields">
     <div class="field">
       <div class="fname">Server IP</div>
-      <div class="fval"><div class="copyrow"><code>$SERVER_IP</code><button class="copy" data-copy="$SERVER_IP">copy</button></div></div>
+      <div class="fval"><div class="copyrow"><code>$SERVER_IP</code><button class="copy" data-copy="$SERVER_IP"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
     </div>
     <div class="field">
       <div class="fname">PTR value</div>
-      <div class="fval"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div></div>
+      <div class="fval"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
     </div>
   </div>
   <ul>
@@ -1379,13 +1730,13 @@ $A_RECORD_ROWS
   <div class="fields">
 $VERIFY_ROWS
   </div>
-  <div class="copyrow" style="margin-top:14px"><span class="mono">Run them all at once</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE">copy all</button></div>
+  <div class="copyrow" style="margin-top:14px"><span class="mono">Run them all at once</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE"><span class="lbl lbl-idle">copy all</span><span class="lbl lbl-done">copied</span></button></div>
 </section>
 
 <section class="step" id="s4">
   <h2><span class="num">4</span> SSL certificate</h2>
   <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
-  <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh">copy</button></div>
+  <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
   <div class="note" style="margin-top:12px">
     <strong>Save the hash it prints.</strong> When the script finishes it outputs
     a 64-character hash, the fingerprint of your certificate's public key. You
@@ -1409,10 +1760,10 @@ $VERIFY_ROWS
     <div class="field">
       <div class="fname">1. Is cron running?</div>
       <div class="fval">
-        <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond">copy</button></div>
+        <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">Prints <code>active</code> if it is. On a
           minimal CentOS/AlmaLinux image it often is not installed &mdash; if so, install it:</div>
-        <div class="copyrow" style="margin-top:6px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond">copy</button></div>
+        <div class="copyrow" style="margin-top:6px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">On Debian/Ubuntu the package and the service
           are both called <code>cron</code>.</div>
       </div>
@@ -1421,7 +1772,7 @@ $VERIFY_ROWS
     <div class="field">
       <div class="fname">2. Open the crontab</div>
       <div class="fval">
-        <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e">copy</button></div>
+        <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">Opens an editor. If it asks which one, pick nano.</div>
       </div>
     </div>
@@ -1429,7 +1780,7 @@ $VERIFY_ROWS
     <div class="field">
       <div class="fname">3. Add this line</div>
       <div class="fval">
-        <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1">copy</button></div>
+        <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">Paste it on its own line, then save and exit.
           Daily is right even for a 90-day certificate: <code>--cron</code> is the quiet mode and
           does nothing until fewer than 30 days remain.</div>
@@ -1439,8 +1790,8 @@ $VERIFY_ROWS
 
   <p class="muted">Check it took, and test the entry without waiting for 2:30am
      &mdash; it should exit 0 and do nothing:</p>
-  <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l">copy</button></div>
-  <div class="copyrow" style="margin-top:6px"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?">copy</button></div>
+  <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+  <div class="copyrow" style="margin-top:6px"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 </section>
 
 <section class="step" id="s6">
@@ -1464,12 +1815,12 @@ $VERIFY_ROWS
       <tr><td data-label="Field">Type</td><td data-label="Value"><code>TLSA</code></td></tr>
       <tr>
         <td data-label="Field">Port</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>25</code><button class="copy" data-copy="25">copy</button></div><div class="muted">Not 443. This protects SMTP, and forms often suggest 443.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>25</code><button class="copy" data-copy="25"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Not 443. This protects SMTP, and forms often suggest 443.</div></td>
       </tr>
       <tr><td data-label="Field">Protocol</td><td data-label="Value"><code>_tcp</code></td></tr>
       <tr>
         <td data-label="Field">Name / Host</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN">copy</button></div><div class="muted">Just the label. Port and Protocol build the <code>_25._tcp</code> part for you. If the form wants one long name instead, use <code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN</code>.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Just the label. Port and Protocol build the <code>_25._tcp</code> part for you. If the form wants one long name instead, use <code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN</code>.</div></td>
       </tr>
       <tr><td data-label="Field">Certificate Usage</td><td data-label="Value"><code>3</code><div class="muted">DANE-EE: the certificate itself, no CA involved.</div></td></tr>
       <tr><td data-label="Field">Selector</td><td data-label="Value"><code>1</code><div class="muted">Match the public key, not the whole certificate.</div></td></tr>
@@ -1492,10 +1843,10 @@ $VERIFY_ROWS
 
   <p>Some registrars take the whole record as one line instead. Then it is
      the following, with your saved hash in place of &lt;hash&gt;:</p>
-  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;">copy</button></div>
+  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 
   <p style="margin-top:12px">Check it once published:</p>
-  <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short">copy</button></div>
+  <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
   <p class="muted" style="margin-top:12px">A space in the middle of the hash in
      that output is only <code>dig</code> wrapping a long string &mdash; the
      record is fine. The hash is the certificate's public key and survives
@@ -1550,17 +1901,24 @@ $VERIFY_ROWS
   }
 
   document.querySelectorAll('button.copy').forEach(function (btn) {
+    var done = btn.querySelector('.lbl-done');
+    var timer = null;
+
     btn.addEventListener('click', function () {
       copyText(btn.getAttribute('data-copy')).then(function () {
-        var old = btn.textContent;
-        btn.textContent = 'copied';
+        // A class, not textContent. Both labels are already in the DOM, so
+        // the button keeps its width through the swap and the transition has
+        // an exit as well as an enter -- rewriting the text would snap.
+        if (done) { done.textContent = 'copied'; }
         btn.classList.add('ok');
-        setTimeout(function () {
-          btn.textContent = old;
-          btn.classList.remove('ok');
-        }, 1400);
+        clearTimeout(timer);
+        timer = setTimeout(function () { btn.classList.remove('ok'); }, 1400);
       }, function () {
-        btn.textContent = 'select it';
+        // Both fallbacks refused. Say what to do instead of failing silently.
+        if (done) { done.textContent = 'select it'; }
+        btn.classList.add('ok');
+        clearTimeout(timer);
+        timer = setTimeout(function () { btn.classList.remove('ok'); }, 2200);
       });
     });
   });
