@@ -134,7 +134,7 @@ from — every value has a copy button and it remembers which steps you have
 finished:
 
 ```
-http://<your-server-ip>/setup
+http://<your-server-ip>/dns-setup
 ```
 
 Plain HTTP and a bare IP, deliberately: the records on that page are what make
@@ -142,7 +142,10 @@ your hostname resolve and your certificate issuable, so the guide cannot live
 behind either of them. Nginx serves it from port 80 on a server with no
 certificate yet. Nothing on it is private — the domain, the server's own IP and
 a DKIM *public* key are all about to be published in DNS anyway. Once TLS is up
-it is also at `https://<web hostname>/setup`.
+it is also at `https://<web hostname>/dns-setup`.
+
+The path is `/dns-setup` and not `/setup` because the web app owns `/setup` —
+that is where a fresh install creates its first admin account.
 
 The same content is on the server as `YOUR_SETUP.md` for reading over SSH. Both
 are written for the subdomains you actually chose, so follow them rather than

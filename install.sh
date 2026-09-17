@@ -892,7 +892,7 @@ echo ""
 # Step 8b: Generate the HTML setup guide
 # ============================================
 # The same content as YOUR_SETUP.md, as a page Nginx serves on port 80 at
-# http://$SERVER_IP/setup.
+# http://$SERVER_IP/dns-setup.
 #
 # Port 80 and an IP address, deliberately. Every record below has to be in DNS
 # before https://$WEB_SUBDOMAIN.$DOMAIN resolves or a certificate can be
@@ -903,10 +903,13 @@ echo ""
 # Everything on the page is public by design -- the domain, the server's own IP
 # and a DKIM *public* key are all things you are about to publish in DNS. No
 # password, no private key, and nothing from the mail store.
+# web-root/dns-setup, NOT web-root/setup: /setup is a route the web app
+# serves -- it is where a fresh install creates the first admin account. An
+# nginx location of the same name shadows it and makes the app unreachable.
 echo "Step 8b: Generating Setup Page"
 echo "------------------------------"
 
-mkdir -p web-root/setup
+mkdir -p web-root/dns-setup
 
 # The page's variable parts, built here rather than inline so the heredoc below
 # stays readable: the A-record rows (one host or two), the dig commands, and
@@ -948,7 +951,7 @@ fi
 # Unquoted heredoc: $VARIABLES are substituted. So there are no backticks and
 # no unescaped $ anywhere in the CSS or JS below -- a backtick would be command
 # substitution and would break the page in ways that are tedious to find.
-cat > web-root/setup/index.html << HTMLEOF
+cat > web-root/dns-setup/index.html << HTMLEOF
 <!doctype html>
 <html lang="en">
 <head>
@@ -1084,7 +1087,7 @@ cat > web-root/setup/index.html << HTMLEOF
   This page is served over plain HTTP from your server's IP, because none of it
   works until the DNS below exists. Everything on it is public information you
   are about to publish in DNS. Once your certificate is issued it is also at
-  <a href="https://$WEB_SUBDOMAIN.$DOMAIN/setup">https://$WEB_SUBDOMAIN.$DOMAIN/setup</a>.
+  <a href="https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup">https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup</a>.
 </div>
 
 <section class="step" id="s1">
@@ -1265,8 +1268,8 @@ $A_RECORD_ROWS
 </html>
 HTMLEOF
 
-chmod 644 web-root/setup/index.html
-chmod 755 web-root web-root/setup
+chmod 644 web-root/dns-setup/index.html
+chmod 755 web-root web-root/dns-setup
 
 echo "✅ Created the setup page"
 echo ""
@@ -1281,7 +1284,7 @@ echo "=========================================="
 echo ""
 echo "📄 Your personalized setup guide is ready. Open it in a browser:"
 echo ""
-echo "   http://$SERVER_IP/setup"
+echo "   http://$SERVER_IP/dns-setup"
 echo ""
 echo "   Plain HTTP and an IP address on purpose -- the records it gives you"
 echo "   are what make the hostname and the certificate work. Every value has"
