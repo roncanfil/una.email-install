@@ -911,6 +911,10 @@ echo "------------------------------"
 
 mkdir -p web-root/dns-setup
 
+# cron runs with no working directory, so the crontab line needs the absolute
+# path to this checkout rather than ./renew-ssl.sh.
+INSTALL_PATH=$(pwd)
+
 # The page's variable parts, built here rather than inline so the heredoc below
 # stays readable: the A-record rows (one host or two), the dig commands, and
 # the singular/plural of "record resolves".
@@ -1012,19 +1016,12 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     padding: 20px;
     margin-bottom: 16px;
   }
-  .step.done { opacity: 0.55; }
   .num {
     flex: 0 0 auto;
     width: 24px; height: 24px; border-radius: 50%;
     background: var(--accent); color: #fff;
     font-size: 13px; font-weight: 600;
     display: grid; place-items: center;
-  }
-  .step.done .num { background: var(--ok); }
-  label.chk {
-    margin-left: auto; font-size: 13px; font-weight: 400;
-    color: var(--muted); display: flex; align-items: center; gap: 6px;
-    cursor: pointer; user-select: none;
   }
   p { margin: 0 0 12px; }
   .muted { color: var(--muted); font-size: 14px; }
@@ -1091,9 +1088,7 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 </div>
 
 <section class="step" id="s1">
-  <h2><span class="num">1</span> DNS records
-    <label class="chk"><input type="checkbox" data-step="s1"> done</label>
-  </h2>
+  <h2><span class="num">1</span> DNS records</h2>
   <p class="muted">Add these at your domain registrar (Cloudflare, Namecheap, GoDaddy&hellip;).</p>
   <table>
     <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
@@ -1124,9 +1119,7 @@ $A_RECORD_ROWS
 </section>
 
 <section class="step" id="s2">
-  <h2><span class="num">2</span> Reverse DNS (PTR)
-    <label class="chk"><input type="checkbox" data-step="s2"> done</label>
-  </h2>
+  <h2><span class="num">2</span> Reverse DNS (PTR)</h2>
   <p>Set at your <strong>VPS provider</strong>, not your registrar. Without it most
      large providers will treat your mail as suspect.</p>
   <table>
@@ -1146,18 +1139,14 @@ $A_RECORD_ROWS
 </section>
 
 <section class="step" id="s3">
-  <h2><span class="num">3</span> Verify propagation
-    <label class="chk"><input type="checkbox" data-step="s3"> done</label>
-  </h2>
+  <h2><span class="num">3</span> Verify propagation</h2>
   <p class="muted">Wait 5&ndash;30 minutes, then run these from any machine.</p>
   <pre>$VERIFY_COMMANDS</pre>
   <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE">copy</button></div>
 </section>
 
 <section class="step" id="s4">
-  <h2><span class="num">4</span> SSL certificate
-    <label class="chk"><input type="checkbox" data-step="s4"> done</label>
-  </h2>
+  <h2><span class="num">4</span> SSL certificate</h2>
   <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
   <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh">copy</button></div>
   <p class="muted" style="margin-top:12px">One certificate is issued covering
@@ -1168,28 +1157,92 @@ $A_RECORD_ROWS
 </section>
 
 <section class="step" id="s5">
-  <h2><span class="num">5</span> DANE / TLSA (optional)
-    <label class="chk"><input type="checkbox" data-step="s5"> done</label>
-  </h2>
-  <p><code>./renew-ssl.sh</code> prints your TLSA hash when it finishes. Add it as:</p>
-  <table>
-    <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
-    <tbody><tr>
-      <td data-label="Type">TLSA</td>
-      <td data-label="Host" class="val"><div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN">copy</button></div></td>
-      <td data-label="Value"><code>3 1 1 &lt;hash from renew-ssl.sh&gt;</code></td>
-    </tr></tbody>
-  </table>
-  <p class="muted">The hash is the certificate's public key and survives renewals
-     (<code>--reuse-key</code>). You only replace it after a full reinstall.</p>
+  <h2><span class="num">5</span> Keep the certificate renewing</h2>
+  <p>Your certificate lasts 90 days. Nothing renews it automatically &mdash; the
+     installer does not touch your crontab &mdash; so add this yourself:</p>
+  <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e">copy</button></div>
+  <p style="margin-top:12px">Add one line:</p>
+  <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1">copy</button></div>
+  <p class="muted" style="margin-top:12px">Daily is right even for a 90-day
+     certificate: <code>--cron</code> is the quiet mode and does nothing until
+     there are fewer than 30 days left.</p>
+  <p style="margin-top:12px">On a minimal CentOS/AlmaLinux image cron is often
+     not installed. Check, and start it if it is missing:</p>
+  <pre>systemctl is-active crond || sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond
+sudo crontab -l</pre>
+  <p class="muted">Debian/Ubuntu: the package is <code>cron</code> and the
+     service is <code>cron</code>. Test the entry without waiting for 2:30am
+     &mdash; it should exit 0 and do nothing:</p>
+  <div class="copyrow"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?">copy</button></div>
 </section>
 
 <section class="step" id="s6">
-  <h2><span class="num">6</span> Sign in and test
-    <label class="chk"><input type="checkbox" data-step="s6"> done</label>
-  </h2>
-  <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>,
-     create your account, then add your first address under Settings.</p>
+  <h2><span class="num">6</span> DANE / TLSA (optional)</h2>
+  <p>DANE publishes your certificate's fingerprint in DNS so sending servers can
+     verify it without trusting a certificate authority. It needs DNSSEC on your
+     domain &mdash; without it, TLSA records are ignored.</p>
+  <p><code>./renew-ssl.sh</code> prints the hash when it finishes. It looks like
+     <code>3 1 1 &lt;64 hex characters&gt;</code>.</p>
+
+  <div class="note">
+    <strong>Most registrars ask for the parts separately</strong>, not as one
+    string. The <code>3 1 1</code> is three separate settings, and the hash is
+    the value on its own &mdash; do not paste <code>3 1 1 &lt;hash&gt;</code>
+    into the value box.
+  </div>
+
+  <table>
+    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td data-label="Field">Type</td><td data-label="Value"><code>TLSA</code></td></tr>
+      <tr>
+        <td data-label="Field">Port</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>25</code><button class="copy" data-copy="25">copy</button></div><div class="muted">Not 443. This protects SMTP, and forms often suggest 443.</div></td>
+      </tr>
+      <tr><td data-label="Field">Protocol</td><td data-label="Value"><code>_tcp</code></td></tr>
+      <tr>
+        <td data-label="Field">Name / Host</td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN">copy</button></div><div class="muted">Just the label. Port and Protocol build the <code>_25._tcp</code> part for you. If the form wants one long name instead, use <code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN</code>.</div></td>
+      </tr>
+      <tr><td data-label="Field">Certificate Usage</td><td data-label="Value"><code>3</code><div class="muted">DANE-EE: the certificate itself, no CA involved.</div></td></tr>
+      <tr><td data-label="Field">Selector</td><td data-label="Value"><code>1</code><div class="muted">Match the public key, not the whole certificate.</div></td></tr>
+      <tr><td data-label="Field">Matching Type</td><td data-label="Value"><code>1</code><div class="muted">SHA-256.</div></td></tr>
+      <tr>
+        <td data-label="Field">Value / Certificate Association Data</td>
+        <td data-label="Value"><code>the 64-character hash from renew-ssl.sh</code><div class="muted">The hash alone. No <code>3 1 1</code> in front of it.</div></td>
+      </tr>
+      <tr><td data-label="Field">TTL</td><td data-label="Value"><code>default</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <strong>Watch the field order.</strong> The wire format is Usage, Selector,
+    Matching Type &mdash; but many registrar forms list them as Usage, Matching
+    Type, Selector. Here all three are <code>3 1 1</code> so it makes no
+    difference, but do not fill them in top to bottom from the string out of
+    habit.
+  </div>
+
+  <p>Some registrars take the whole record as one line instead. Then it is:</p>
+  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN &nbsp;TLSA&nbsp; 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN">copy name</button></div>
+
+  <p style="margin-top:12px">Check it once published:</p>
+  <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short">copy</button></div>
+  <p class="muted" style="margin-top:12px">A space in the middle of the hash in
+     that output is only <code>dig</code> wrapping a long string &mdash; the
+     record is fine. The hash is the certificate's public key and survives
+     renewals (<code>--reuse-key</code>), so you only replace it after a full
+     reinstall &mdash; which does generate a new key, and until you update this
+     record, senders that check DANE will refuse your mail.</p>
+</section>
+
+<section class="step" id="s7">
+  <h2><span class="num">7</span> Sign in and test</h2>
+  <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>.
+     The first screen creates your <em>sign-in</em> &mdash; the admin login for
+     this install, not a mailbox, and nothing is delivered to it. Once you are
+     in, create your first mailbox under Settings &rarr; Accounts. Mail sent to
+     an address with no mailbox is refused.</p>
   <p>Then send a message to <a href="https://mail-tester.com/">mail-tester.com</a>
      &mdash; a few sentences of ordinary text, not one word &mdash; and check the
      score. SPF, DKIM, DMARC, PTR and blacklists should all be green. Below 8,
@@ -1244,24 +1297,6 @@ $A_RECORD_ROWS
     });
   });
 
-  // Progress is per-browser and per-origin. It is a convenience, not state the
-  // server knows about, so a blocked or cleared localStorage just means the
-  // boxes start unticked.
-  var KEY = 'una-setup-$DOMAIN';
-  var saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
-
-  document.querySelectorAll('input[data-step]').forEach(function (box) {
-    var id = box.getAttribute('data-step');
-    var section = document.getElementById(id);
-    box.checked = !!saved[id];
-    if (box.checked) { section.classList.add('done'); }
-    box.addEventListener('change', function () {
-      section.classList.toggle('done', box.checked);
-      saved[id] = box.checked;
-      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
-    });
-  });
 })();
 </script>
 </body>
