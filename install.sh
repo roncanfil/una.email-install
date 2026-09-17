@@ -624,9 +624,88 @@ Server IP: $SERVER_IP
 
 ---
 
+## Before You Start: Is This Domain Already In Use?
+
+**Skip this if $DOMAIN is a brand-new domain with an empty DNS zone.**
+
+If $DOMAIN already has a website or a mailbox somewhere else -- GoDaddy, Squarespace,
+Wix, Google Workspace, Microsoft 365 -- UNA runs alongside it.
+
+**Your website is not affected.** Nothing in this guide changes the A record for
+$DOMAIN or www.$DOMAIN. Only $SMTP_SUBDOMAIN.$DOMAIN and $WEB_SUBDOMAIN.$DOMAIN point at
+this server, and the certificate covers only those two names. Your site keeps loading
+from wherever it is hosted now.
+
+But three of the records in Step 1 are **single-value** records. Adding them next to
+what is already published does not work -- it breaks both. Check what exists first:
+
+\`\`\`bash
+dig NS $DOMAIN +short                    # where your DNS actually lives
+dig MX $DOMAIN +short                    # every line here must be removed
+dig TXT $DOMAIN +short | grep -c v=spf1  # must end up as 1, never 2
+dig TXT _dmarc.$DOMAIN +short            # if this answers, replace it
+\`\`\`
+
+### MX -- delete the existing records first
+
+Mail for **all of** $DOMAIN moves to UNA. Leave your old provider's MX records in place
+next to UNA's and inbound mail is split between two servers more or less at random --
+some of it will never reach your UNA inbox. Remove every existing MX record on \`@\`
+before adding the one in Step 1.
+
+If you still need the messages in the old mailbox, export them **before** you switch the
+MX. UNA is web-only and has no IMAP import.
+
+### SPF -- merge into the existing record, never add a second
+
+A domain may publish only **one** \`v=spf1\` record. Two of them is a permanent error
+(\`permerror\`), and SPF then fails for *every* sender on your domain, the old host
+included. If the \`grep -c\` above returned \`1\`, edit that record instead of adding
+UNA's. An existing GoDaddy record like this:
+
+\`\`\`
+v=spf1 include:secureserver.net -all
+\`\`\`
+
+becomes:
+
+\`\`\`
+v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all
+\`\`\`
+
+Use whichever \`include:\` terms your own record already has. Keep the \`all\` mechanism
+last, and leave it as \`~all\` while you are testing.
+
+### DMARC -- one record only
+
+Same rule at \`_dmarc\`. If a DMARC record already exists, replace its value with the one
+in Step 1 rather than publishing a second TXT record.
+
+### DKIM -- safe to add
+
+\`una._domainkey\` is scoped to the \`una\` selector, so it cannot collide with another
+provider's DKIM key unless that provider also happens to use the selector \`una\`.
+
+### Where do the records go?
+
+"Your registrar" is shorthand. Records have to be added wherever your **nameservers**
+point, which is not always the registrar -- a domain can be registered at GoDaddy while
+DNS is served by Cloudflare or a site builder. The \`dig NS\` check above tells you which
+control panel to open.
+
+### If your DNS is on Cloudflare
+
+Set \`$SMTP_SUBDOMAIN\` and \`$WEB_SUBDOMAIN\` to **DNS only** (grey cloud, not orange).
+A proxied record breaks SMTP on port 25 completely, and serves visitors Cloudflare's
+certificate instead of the one \`./renew-ssl.sh\` issues.
+
+---
+
 ## Step 1: Add DNS Records
 
-Go to your domain registrar (Cloudflare, Namecheap, GoDaddy, etc.) and add these DNS records:
+Add these wherever your nameservers point -- usually your registrar (GoDaddy, Namecheap,
+Cloudflare, etc.), but not always. If this domain is already in use somewhere else, read
+"Before You Start" above first.
 
 ### 1. MX Record
 Tells email servers where to deliver mail for your domain.
@@ -634,6 +713,9 @@ Tells email servers where to deliver mail for your domain.
 | Type | Host | Value | Priority |
 |------|------|-------|----------|
 | MX | @ | $SMTP_SUBDOMAIN.$DOMAIN | 10 |
+
+**Delete any existing MX records on \`@\` first.** Two providers' MX records side by side
+split your inbound mail between them.
 
 ### 2. A Record$(if [ "$WEB_SUBDOMAIN" != "$SMTP_SUBDOMAIN" ]; then echo 's'; fi)
 Point your hostname$(if [ "$WEB_SUBDOMAIN" != "$SMTP_SUBDOMAIN" ]; then echo 's'; fi) to your server.
@@ -663,6 +745,9 @@ Tells receivers which servers can send email for your domain.
 |------|------|-------|
 | TXT | @ | v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all |
 
+**Only one \`v=spf1\` record is allowed per domain.** If you already have one, merge UNA's
+sources into it instead of adding this as a second record -- see "Before You Start" above.
+
 ### 4. DKIM Records
 Cryptographic signature for email authentication. You need TWO DKIM records:
 
@@ -679,6 +764,9 @@ Policy for handling authentication failures.
 | Type | Host | Value |
 |------|------|-------|
 | TXT | _dmarc | v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100 |
+
+**One DMARC record only.** If \`_dmarc\` already has a value, replace it rather than adding
+a second TXT record.
 
 ---
 
@@ -716,6 +804,8 @@ dig MX $DOMAIN +short
 \`\`\`
 10 $SMTP_SUBDOMAIN.$DOMAIN.
 \`\`\`
+More than one line here means an old provider's MX record is still published. Remove it,
+or half your mail keeps going to the old server.
 
 $(if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
 echo '\`\`\`bash'
@@ -739,10 +829,21 @@ echo '\`\`\`'
 fi)
 
 \`\`\`bash
-# Check SPF record
-dig TXT $DOMAIN +short | grep spf
+# Check that there is exactly one SPF record
+dig TXT $DOMAIN +short | grep -c v=spf1
 \`\`\`
 **Expected output:**
+\`\`\`
+1
+\`\`\`
+A \`2\` here means a second SPF record was added instead of merging. SPF fails for every
+sender on your domain until it is back to one -- see "Before You Start" above.
+
+\`\`\`bash
+# Check the record itself
+dig TXT $DOMAIN +short | grep v=spf1
+\`\`\`
+**Expected output:** the record you published, for example
 \`\`\`
 "v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"
 \`\`\`
@@ -915,6 +1016,19 @@ mkdir -p web-root/dns-setup
 # path to this checkout rather than ./renew-ssl.sh.
 INSTALL_PATH=$(pwd)
 
+# What to look for BEFORE publishing anything: whether this zone already has an
+# MX, an SPF record or a DMARC record from another provider. Those three are
+# single-value -- a second one does not sit alongside the first, it breaks both
+# -- so the page has to ask the question before it hands out records to paste.
+# Independent of the one-name/two-name split below, hence built out here.
+PRECHECK_COMMANDS="dig NS $DOMAIN +short                    # where your DNS actually lives
+dig MX $DOMAIN +short                    # every line here must be removed
+dig TXT $DOMAIN +short | grep -c v=spf1  # must end up as 1, never 2
+dig TXT _dmarc.$DOMAIN +short            # if this answers, replace it"
+# Single quotes only: this string is interpolated into a double-quoted HTML
+# attribute (data-copy="..."), so a double quote here would close it early.
+PRECHECK_ONELINE="dig NS $DOMAIN +short; dig MX $DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT _dmarc.$DOMAIN +short"
+
 # The page's variable parts, built here rather than inline so the heredoc below
 # stays readable: the A-record rows (one host or two), the dig commands, and
 # the singular/plural of "record resolves".
@@ -927,10 +1041,10 @@ if [ "$WEB_SUBDOMAIN" = "$SMTP_SUBDOMAIN" ]; then
       </tr>"
     VERIFY_COMMANDS="dig MX $DOMAIN +short          # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
 dig A $SMTP_SUBDOMAIN.$DOMAIN +short   # expect: $SERVER_IP
-dig TXT $DOMAIN +short | grep spf
+dig TXT $DOMAIN +short | grep -c v=spf1  # exactly 1, a 2 breaks SPF
 dig TXT una._domainkey.$DOMAIN +short
 dig -x $SERVER_IP +short        # expect: $SMTP_SUBDOMAIN.$DOMAIN."
-    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep spf; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
 else
     A_PLURAL="s"
     A_VERB=""
@@ -945,10 +1059,10 @@ else
     VERIFY_COMMANDS="dig MX $DOMAIN +short           # expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.
 dig A $SMTP_SUBDOMAIN.$DOMAIN +short    # expect: $SERVER_IP
 dig A $WEB_SUBDOMAIN.$DOMAIN +short     # expect: $SERVER_IP
-dig TXT $DOMAIN +short | grep spf
+dig TXT $DOMAIN +short | grep -c v=spf1  # exactly 1, a 2 breaks SPF
 dig TXT una._domainkey.$DOMAIN +short
 dig -x $SERVER_IP +short         # expect: $SMTP_SUBDOMAIN.$DOMAIN."
-    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig A $WEB_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep spf; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+    VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig A $WEB_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
 fi
 
 
@@ -1023,6 +1137,8 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     font-size: 13px; font-weight: 600;
     display: grid; place-items: center;
   }
+  .num.alert { background: var(--warn-line); color: var(--warn-ink); }
+  h3 { font-size: 15px; margin: 20px 0 8px; }
   p { margin: 0 0 12px; }
   .muted { color: var(--muted); font-size: 14px; }
   table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
@@ -1087,20 +1203,78 @@ cat > web-root/dns-setup/index.html << HTMLEOF
   <a href="https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup">https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup</a>.
 </div>
 
+<section class="step" id="s0">
+  <h2><span class="num alert">!</span> Already using this domain elsewhere?</h2>
+  <p class="muted">Skip this if $DOMAIN is a brand-new domain with an empty DNS zone.</p>
+  <p>If $DOMAIN already has a website or a mailbox somewhere else &mdash; GoDaddy,
+     Squarespace, Wix, Google Workspace, Microsoft&nbsp;365 &mdash; UNA runs alongside it.</p>
+  <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
+     record for $DOMAIN or www.$DOMAIN. Only $SMTP_SUBDOMAIN.$DOMAIN and
+     $WEB_SUBDOMAIN.$DOMAIN point at this server, and the certificate covers only those
+     two names. Your site keeps loading from wherever it is hosted now.</p>
+  <p>But three of the records in step 1 are <strong>single-value</strong> records. Adding
+     them next to what is already published does not work &mdash; it breaks both. Check
+     what exists first:</p>
+  <pre>$PRECHECK_COMMANDS</pre>
+  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE">copy</button></div>
+
+  <h3>MX &mdash; delete the existing records first</h3>
+  <p>Mail for <strong>all of</strong> $DOMAIN moves to UNA. Leave your old provider's MX
+     records in place next to UNA's and inbound mail is split between two servers more or
+     less at random &mdash; some of it will never reach your UNA inbox. Remove every
+     existing MX record on <code>@</code> before adding the one in step 1.</p>
+  <p>If you still need the messages in the old mailbox, export them <strong>before</strong>
+     you switch the MX. UNA is web-only and has no IMAP import.</p>
+
+  <h3>SPF &mdash; merge, never add a second record</h3>
+  <p>A domain may publish only <strong>one</strong> <code>v=spf1</code> record. Two of them
+     is a permanent error, and SPF then fails for <em>every</em> sender on your domain, the
+     old host included. If the count above came back as 1, edit that record instead of
+     adding UNA's. An existing GoDaddy record like this:</p>
+  <pre>v=spf1 include:secureserver.net -all</pre>
+  <p>becomes:</p>
+  <div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all">copy</button></div>
+  <p class="muted">Use whichever <code>include:</code> terms your own record already has.
+     Keep the <code>all</code> mechanism last, and leave it as <code>~all</code> while you
+     are testing.</p>
+
+  <h3>DMARC &mdash; one record only</h3>
+  <p>Same rule at <code>_dmarc</code>. If a DMARC record already exists, replace its value
+     with the one in step 1 rather than publishing a second TXT record.</p>
+
+  <h3>DKIM &mdash; safe to add</h3>
+  <p><code>una._domainkey</code> is scoped to the <code>una</code> selector, so it cannot
+     collide with another provider's DKIM key unless that provider also happens to use the
+     selector <code>una</code>.</p>
+
+  <h3>Where do the records go?</h3>
+  <p>&ldquo;Your registrar&rdquo; is shorthand. Records have to be added wherever your
+     <strong>nameservers</strong> point, which is not always the registrar &mdash; a domain
+     can be registered at GoDaddy while DNS is served by Cloudflare or a site builder. The
+     <code>dig NS</code> check above tells you which control panel to open.</p>
+
+  <h3>If your DNS is on Cloudflare</h3>
+  <p>Set <code>$SMTP_SUBDOMAIN</code> and <code>$WEB_SUBDOMAIN</code> to
+     <strong>DNS only</strong> (grey cloud, not orange). A proxied record breaks SMTP on
+     port 25 completely, and serves visitors Cloudflare's certificate instead of the one
+     <code>./renew-ssl.sh</code> issues.</p>
+</section>
+
 <section class="step" id="s1">
   <h2><span class="num">1</span> DNS records</h2>
-  <p class="muted">Add these at your domain registrar (Cloudflare, Namecheap, GoDaddy&hellip;).</p>
+  <p class="muted">Add these wherever your nameservers point &mdash; usually your registrar
+     (GoDaddy, Namecheap, Cloudflare&hellip;), but not always.</p>
   <table>
     <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
     <tbody>
       <tr>
         <td data-label="Type">MX</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div><div class="muted">Priority 10</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div><div class="muted">Priority 10. Delete any existing MX records on @ first &mdash; two providers side by side split your inbound mail.</div></td>
       </tr>
 $A_RECORD_ROWS
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all">copy</button></div><div class="muted">SPF</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all">copy</button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain &mdash; if you already have one, merge into it rather than adding this.</div></td>
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
@@ -1112,7 +1286,7 @@ $A_RECORD_ROWS
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">_dmarc</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100">copy</button></div><div class="muted">DMARC</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100">copy</button></div><div class="muted">DMARC. One record only; replace an existing _dmarc value rather than adding a second.</div></td>
       </tr>
     </tbody>
   </table>
@@ -1323,7 +1497,10 @@ echo "   http://$SERVER_IP/dns-setup"
 echo ""
 echo "   Plain HTTP and an IP address on purpose -- the records it gives you"
 echo "   are what make the hostname and the certificate work. Every value has"
-echo "   a copy button, and it remembers which steps you have finished."
+echo "   a copy button."
+echo ""
+echo "   If $DOMAIN already has a website or email somewhere else, read the"
+echo "   first section of that page before you touch DNS."
 echo ""
 echo "   Same content in the terminal:  cat YOUR_SETUP.md"
 echo ""
