@@ -198,6 +198,13 @@ services:
       SMTP_RELAY_PORT: ${SMTP_RELAY_PORT:-}
       SMTP_RELAY_USERNAME: ${SMTP_RELAY_USERNAME:-}
       SMTP_RELAY_PASSWORD: ${SMTP_RELAY_PASSWORD:-}
+
+      # Decrypts the relay password stored in `relay_settings` when outbound is
+      # configured from Settings -> Sending rather than from the keys above.
+      # The web container holds the same key and does the encrypting; this is
+      # the only process that turns it back into a password, and it writes it
+      # straight to /etc/postfix/sasl_passwd at 0600.
+      RELAY_KEY: ${RELAY_KEY:?set RELAY_KEY in .env}
     volumes:
       - ./letsencrypt/etc:/etc/letsencrypt
       - attachments_data:/data/attachments
@@ -281,8 +288,17 @@ services:
       # installs that predate Phase 6.
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?set VAPID_PUBLIC_KEY in .env}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?set VAPID_PRIVATE_KEY in .env}
+      # Encrypts the outbound relay password before it is stored. Required the
+      # same way and for the same reason as the keys above: an unset key would
+      # not stop the app, it would fail the first time someone configured a
+      # relay -- at the moment their mail had already started bouncing.
+      RELAY_KEY: ${RELAY_KEY:?set RELAY_KEY in .env}
       # Who the push service contacts about this application server.
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@${DOMAIN:-localhost}}
+      # The SMTP hostname, for display only: Settings -> Sending draws the
+      # inbound path and needs the name the MX points at. Nothing here acts on
+      # it -- Postfix's own $$myhostname comes from the postfix service above.
+      SMTP_SUBDOMAIN: ${SMTP_SUBDOMAIN:-mail}
     volumes:
       - attachments_data:/data/attachments
       # The same ./dkim the rspamd service mounts read-only, read-write here.

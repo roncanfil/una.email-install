@@ -41,9 +41,6 @@ cd una.email-install
 The installer will:
 - Configure firewall automatically (if firewalld or ufw is active)
 - Ask for your domain, your two subdomains (below), and a database password
-- Ask whether outbound mail should go through Amazon SES (optional — skipping it
-  leaves UNA delivering directly, and writes the keys commented out so they are
-  easy to find later)
 - Generate an `RSPAMD_PASSWORD` for you (you are not asked for one) and write
   it to `.env`
 - Pull and start all Docker containers
@@ -93,12 +90,35 @@ documents every key. Two of them are secrets and are never committed:
 | `SMTP_SUBDOMAIN` | The mail server's hostname, `mail` by default. See [The two hostnames](#the-two-hostnames). |
 | `WEB_SUBDOMAIN` | The webmail hostname, `webmail` by default. Called `MAIL_SUBDOMAIN` before these were split; that spelling is still read as a fallback, so an older `.env` keeps working. |
 | `DB_PASSWORD` | Postgres password for the `una_email` role |
+| `RELAY_KEY` | Encrypts the outbound relay password stored in the database. **Required** — `docker compose` refuses to start without it. Only used when outbound delivery is configured from Settings → Sending; changing it means re-entering those credentials and affects nothing else. |
 | `RSPAMD_PASSWORD` | Rspamd controller password. **Required** -- `docker compose` refuses to start without it. It guards the controller on :11334 (`/stat`, `/learnspam`, `/learnham`, the web UI), which the Rspamd image otherwise leaves on its default `q1`, and the web app uses the same value to teach the Bayes classifier when you report spam. |
 
 The Rspamd controller is published on **`127.0.0.1:11334` only** -- it is not
 reachable from outside the server. The web container talks to it over the
 internal Docker network at `http://rspamd:11334`. To open the Rspamd web UI,
 tunnel to it: `ssh -L 11334:127.0.0.1:11334 you@yourserver`.
+
+### Outbound mail
+
+A fresh install delivers straight to each recipient's mail server on port 25,
+and the installer no longer asks about it. That default is right until it is
+not: many providers block outbound 25, and a new IP can be on a blocklist
+before you ever send from it. When that happens the symptom is mail that
+queues and then bounces while every page in UNA still looks healthy.
+
+**Settings → Sending** is where you change it — a diagram of both mail paths,
+and a switch to Amazon SES or any other SMTP provider. It applies immediately:
+the mail server is reloaded, not restarted, so nothing queued is lost and no
+SSH session is involved.
+
+Switching hands DKIM signing to your provider, so their DNS records are what
+make your mail pass DMARC from then on. The page lists what to publish before
+you switch, and UNA will not claim a record is present — it never queries DNS.
+Send a test message afterwards; that is the real confirmation.
+
+`SMTP_RELAY_*` in `.env` still works and takes precedence over anything saved
+in the UI, which makes that page read-only. See
+[docs/OUTBOUND_RELAY.md](https://github.com/roncanfil/una.email) for the keys.
 
 ### Tuning the spam filter
 

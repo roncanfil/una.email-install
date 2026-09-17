@@ -112,6 +112,27 @@ else
     echo "✅ added SESSION_SECRET to .env"
 fi
 
+# RELAY_KEY became required when outbound delivery became configurable from
+# Settings -> Sending. It encrypts the relay password in the database, so a
+# dump on its own does not yield a live sending credential.
+#
+# Safe to generate here on any install: it can only decrypt a password that was
+# encrypted with it, and an install that has never configured a relay from the
+# UI has none. An install using SMTP_RELAY_* in .env is unaffected either way --
+# those keys take precedence and never go near the database.
+if grep -qE '^[[:space:]]*RELAY_KEY=.+' .env; then
+    echo "✅ RELAY_KEY present"
+elif grep -qE '^[[:space:]]*RELAY_KEY=[[:space:]]*$' .env; then
+    echo "❌ RELAY_KEY is present but empty in .env."
+    echo "   Set a value (or delete the empty line and re-run this script):"
+    echo "     echo \"RELAY_KEY=\$(openssl rand -base64 32)\" >> .env"
+    exit 1
+else
+    printf '\n# Encrypts the outbound relay password in the database (added by update.sh).\n# Changing it means re-entering the credentials in Settings -> Sending.\nRELAY_KEY=%s\n' \
+        "$(openssl rand -base64 32)" >> .env
+    echo "✅ added RELAY_KEY to .env"
+fi
+
 # VAPID became required with Phase 6 (push notifications). Same shape again.
 # Safe to generate here: the keys only mean anything to push subscriptions,
 # and an install that has never had the feature has no subscriptions to
