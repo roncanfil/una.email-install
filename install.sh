@@ -133,7 +133,7 @@ echo ""
 # A record and one name on the certificate. Worth saying out loud so it reads
 # as a choice rather than a mistake.
 if [ "$SMTP_SUBDOMAIN" = "$WEB_SUBDOMAIN" ]; then
-    echo "ℹ️  Both services share $SMTP_SUBDOMAIN.$DOMAIN — one A record covers"
+    echo "ℹ️  Both services share $SMTP_SUBDOMAIN.$DOMAIN - one A record covers"
     echo "   SMTP on port 25 and HTTPS on port 443."
     echo ""
 fi
@@ -720,7 +720,7 @@ a second TXT record.
 ## Step 2: Set Up Reverse DNS (PTR Record)
 
 Reverse DNS maps your server's IP address back to your hostname. This is essential for
-email deliverability — most mail servers will reject or flag emails from servers without
+email deliverability - most mail servers will reject or flag emails from servers without
 a valid PTR record.
 
 **Important:** This is NOT configured at your domain registrar. You must set it up at your
@@ -934,7 +934,7 @@ Open your browser and go to:
 **https://$WEB_SUBDOMAIN.$DOMAIN**
 
 You should see the UNA Email login page with a valid SSL certificate (green padlock).
-Create your account, then go to **Settings** and create your first email address — you'll
+Create your account, then go to **Settings** and create your first email address - you'll
 need it for the next step.
 
 ---
@@ -956,11 +956,11 @@ Now that you have an email address, verify that everything is configured correct
 
 ### What to look for:
 - **10/10**: Perfect! Your server is fully configured
-- **SPF**: Should show green — verifies your server is authorized to send
-- **DKIM**: Should show green — verifies your email signature
-- **DMARC**: Should show green — verifies your domain policy
-- **Blacklists**: Should show green — your IP is not blacklisted
-- **PTR Record**: Should show green — reverse DNS is configured
+- **SPF**: Should show green - verifies your server is authorized to send
+- **DKIM**: Should show green - verifies your email signature
+- **DMARC**: Should show green - verifies your domain policy
+- **Blacklists**: Should show green - your IP is not blacklisted
+- **PTR Record**: Should show green - reverse DNS is configured
 
 ### If your score is below 8:
 - Check which items are marked with red or yellow
@@ -1069,7 +1069,7 @@ dig -x $SERVER_IP +short        # expect: $SMTP_SUBDOMAIN.$DOMAIN."
     VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
     VERIFY_ROWS="$(verify_row "MX" "dig MX $DOMAIN +short" "expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.")
 $(verify_row "A record" "dig A $SMTP_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
-$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 &mdash; a 2 breaks SPF for every sender on your domain")
+$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 - a 2 breaks SPF for every sender on your domain")
 $(verify_row "DKIM" "dig TXT una._domainkey.$DOMAIN +short" "expect: a long v=DKIM1 record")
 $(verify_row "PTR" "dig -x $SERVER_IP +short" "expect: $SMTP_SUBDOMAIN.$DOMAIN.")"
 else
@@ -1091,9 +1091,9 @@ dig TXT una._domainkey.$DOMAIN +short
 dig -x $SERVER_IP +short         # expect: $SMTP_SUBDOMAIN.$DOMAIN."
     VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig A $WEB_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
     VERIFY_ROWS="$(verify_row "MX" "dig MX $DOMAIN +short" "expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.")
-$(verify_row "A &mdash; mail" "dig A $SMTP_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
-$(verify_row "A &mdash; web" "dig A $WEB_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
-$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 &mdash; a 2 breaks SPF for every sender on your domain")
+$(verify_row "A - mail" "dig A $SMTP_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
+$(verify_row "A - web" "dig A $WEB_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
+$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 - a 2 breaks SPF for every sender on your domain")
 $(verify_row "DKIM" "dig TXT una._domainkey.$DOMAIN +short" "expect: a long v=DKIM1 record")
 $(verify_row "PTR" "dig -x $SERVER_IP +short" "expect: $SMTP_SUBDOMAIN.$DOMAIN.")"
 fi
@@ -1608,27 +1608,27 @@ cat > web-root/dns-setup/index.html << HTMLEOF
      this and start at step 1.</p>
   <details>
   <summary>Read this if $DOMAIN already has a website or email somewhere else</summary>
-  <p>If $DOMAIN already has a website or a mailbox somewhere else &mdash; GoDaddy,
-     Squarespace, Wix, Google Workspace, Microsoft&nbsp;365 &mdash; UNA runs alongside it.</p>
+  <p>If $DOMAIN already has a website or a mailbox somewhere else - GoDaddy,
+     Squarespace, Wix, Google Workspace, Microsoft&nbsp;365 - UNA runs alongside it.</p>
   <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
      record for $DOMAIN or www.$DOMAIN. Only $SMTP_SUBDOMAIN.$DOMAIN and
      $WEB_SUBDOMAIN.$DOMAIN point at this server, and the certificate covers only those
      two names. Your site keeps loading from wherever it is hosted now.</p>
   <p>But three of the records in step 1 are <strong>single-value</strong> records. Adding
-     them next to what is already published does not work &mdash; it breaks both. Check
+     them next to what is already published does not work - it breaks both. Check
      what exists first:</p>
   <pre>$PRECHECK_COMMANDS</pre>
   <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 
-  <h3>MX &mdash; delete the existing records first</h3>
+  <h3>MX - delete the existing records first</h3>
   <p>Mail for <strong>all of</strong> $DOMAIN moves to UNA. Leave your old provider's MX
      records in place next to UNA's and inbound mail is split between two servers more or
-     less at random &mdash; some of it will never reach your UNA inbox. Remove every
+     less at random - some of it will never reach your UNA inbox. Remove every
      existing MX record on <code>@</code> before adding the one in step 1.</p>
   <p>If you still need the messages in the old mailbox, export them <strong>before</strong>
      you switch the MX. UNA is web-only and has no IMAP import.</p>
 
-  <h3>SPF &mdash; merge, never add a second record</h3>
+  <h3>SPF - merge, never add a second record</h3>
   <p>A domain may publish only <strong>one</strong> <code>v=spf1</code> record. Two of them
      is a permanent error, and SPF then fails for <em>every</em> sender on your domain, the
      old host included. If the count above came back as 1, edit that record instead of
@@ -1640,18 +1640,18 @@ cat > web-root/dns-setup/index.html << HTMLEOF
      Keep the <code>all</code> mechanism last, and leave it as <code>~all</code> while you
      are testing.</p>
 
-  <h3>DMARC &mdash; one record only</h3>
+  <h3>DMARC - one record only</h3>
   <p>Same rule at <code>_dmarc</code>. If a DMARC record already exists, replace its value
      with the one in step 1 rather than publishing a second TXT record.</p>
 
-  <h3>DKIM &mdash; safe to add</h3>
+  <h3>DKIM - safe to add</h3>
   <p><code>una._domainkey</code> is scoped to the <code>una</code> selector, so it cannot
      collide with another provider's DKIM key unless that provider also happens to use the
      selector <code>una</code>.</p>
 
   <h3>Where do the records go?</h3>
   <p>&ldquo;Your registrar&rdquo; is shorthand. Records have to be added wherever your
-     <strong>nameservers</strong> point, which is not always the registrar &mdash; a domain
+     <strong>nameservers</strong> point, which is not always the registrar - a domain
      can be registered at GoDaddy while DNS is served by Cloudflare or a site builder. The
      <code>dig NS</code> check above tells you which control panel to open.</p>
 
@@ -1665,19 +1665,19 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 
 <section class="step" id="s1">
   <h2><span class="num">1</span> DNS records</h2>
-  <p class="muted">Add these wherever your nameservers point &mdash; usually your registrar
+  <p class="muted">Add these wherever your nameservers point - usually your registrar
      (GoDaddy, Namecheap, Cloudflare&hellip;), but not always.</p>
   <table>
     <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
     <tbody>
       <tr>
         <td data-label="Type">MX</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Priority 10. Delete any existing MX records on @ first &mdash; two providers side by side split your inbound mail.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Priority 10. Delete any existing MX records on @ first - two providers side by side split your inbound mail.</div></td>
       </tr>
 $A_RECORD_ROWS
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain &mdash; if you already have one, merge into it rather than adding this.</div></td>
+        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain - if you already have one, merge into it rather than adding this.</div></td>
       </tr>
       <tr>
         <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
@@ -1714,17 +1714,17 @@ $A_RECORD_ROWS
     </div>
   </div>
   <ul>
-    <li><strong>Vultr</strong> &mdash; Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
-    <li><strong>DigitalOcean</strong> &mdash; rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
-    <li><strong>Hetzner</strong> &mdash; Server &rarr; Networking &rarr; click the IP &rarr; Reverse DNS</li>
-    <li><strong>Linode/Akamai</strong> &mdash; Network &rarr; IP Addresses &rarr; Edit RDNS</li>
+    <li><strong>Vultr</strong> - Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
+    <li><strong>DigitalOcean</strong> - rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
+    <li><strong>Hetzner</strong> - Server &rarr; Networking &rarr; click the IP &rarr; Reverse DNS</li>
+    <li><strong>Linode/Akamai</strong> - Network &rarr; IP Addresses &rarr; Edit RDNS</li>
     <li>Others: look for &ldquo;Reverse DNS&rdquo;, &ldquo;PTR&rdquo; or &ldquo;RDNS&rdquo;. Some require a support ticket.</li>
   </ul>
 </section>
 
 <section class="step" id="s3">
   <h2><span class="num">3</span> Verify propagation</h2>
-  <p class="muted">Wait 5&ndash;30 minutes, then run these from any machine. Each
+  <p class="muted">Wait 5-30 minutes, then run these from any machine. Each
      one is copyable on its own, so you can work through them and see which
      record is not there yet.</p>
   <div class="fields">
@@ -1740,7 +1740,7 @@ $VERIFY_ROWS
   <div class="note" style="margin-top:12px">
     <strong>Save the hash it prints.</strong> When the script finishes it outputs
     a 64-character hash, the fingerprint of your certificate's public key. You
-    need it in step 6. Copy it somewhere now &mdash; you can always get it back
+    need it in step 6. Copy it somewhere now - you can always get it back
     with the command in step 6, but it is easier to keep than to re-derive.
   </div>
   <p class="muted" style="margin-top:12px">One certificate is issued covering
@@ -1753,7 +1753,7 @@ $VERIFY_ROWS
 <section class="step" id="s5">
   <h2><span class="num">5</span> Keep the certificate renewing</h2>
   <p>Your certificate lasts 90 days and <strong>nothing renews it
-     automatically</strong> &mdash; the installer does not touch your crontab.
+     automatically</strong> - the installer does not touch your crontab.
      Three commands, on the server:</p>
 
   <div class="fields">
@@ -1762,7 +1762,7 @@ $VERIFY_ROWS
       <div class="fval">
         <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">Prints <code>active</code> if it is. On a
-          minimal CentOS/AlmaLinux image it often is not installed &mdash; if so, install it:</div>
+          minimal CentOS/AlmaLinux image it often is not installed - if so, install it:</div>
         <div class="copyrow" style="margin-top:6px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
         <div class="muted" style="margin-top:4px">On Debian/Ubuntu the package and the service
           are both called <code>cron</code>.</div>
@@ -1789,7 +1789,7 @@ $VERIFY_ROWS
   </div>
 
   <p class="muted">Check it took, and test the entry without waiting for 2:30am
-     &mdash; it should exit 0 and do nothing:</p>
+     - it should exit 0 and do nothing:</p>
   <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
   <div class="copyrow" style="margin-top:6px"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 </section>
@@ -1798,14 +1798,14 @@ $VERIFY_ROWS
   <h2><span class="num">6</span> DANE / TLSA (optional)</h2>
   <p>DANE publishes your certificate's fingerprint in DNS so sending servers can
      verify it without trusting a certificate authority. It needs DNSSEC on your
-     domain &mdash; without it, TLSA records are ignored.</p>
+     domain - without it, TLSA records are ignored.</p>
   <p><code>./renew-ssl.sh</code> prints the hash when it finishes. It looks like
      <code>3 1 1 &lt;64 hex characters&gt;</code>.</p>
 
   <div class="note">
     <strong>Most registrars ask for the parts separately</strong>, not as one
     string. The <code>3 1 1</code> is three separate settings, and the hash is
-    the value on its own &mdash; do not paste <code>3 1 1 &lt;hash&gt;</code>
+    the value on its own - do not paste <code>3 1 1 &lt;hash&gt;</code>
     into the value box.
   </div>
 
@@ -1835,7 +1835,7 @@ $VERIFY_ROWS
 
   <div class="note">
     <strong>Watch the field order.</strong> The wire format is Usage, Selector,
-    Matching Type &mdash; but many registrar forms list them as Usage, Matching
+    Matching Type - but many registrar forms list them as Usage, Matching
     Type, Selector. Here all three are <code>3 1 1</code> so it makes no
     difference, but do not fill them in top to bottom from the string out of
     habit.
@@ -1848,22 +1848,22 @@ $VERIFY_ROWS
   <p style="margin-top:12px">Check it once published:</p>
   <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
   <p class="muted" style="margin-top:12px">A space in the middle of the hash in
-     that output is only <code>dig</code> wrapping a long string &mdash; the
+     that output is only <code>dig</code> wrapping a long string - the
      record is fine. The hash is the certificate's public key and survives
      renewals (<code>--reuse-key</code>), so you only replace it after a full
-     reinstall &mdash; which does generate a new key, and until you update this
+     reinstall - which does generate a new key, and until you update this
      record, senders that check DANE will refuse your mail.</p>
 </section>
 
 <section class="step" id="s7">
   <h2><span class="num">7</span> Sign in and test</h2>
   <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>.
-     The first screen creates your <em>sign-in</em> &mdash; the admin login for
+     The first screen creates your <em>sign-in</em> - the admin login for
      this install, not a mailbox, and nothing is delivered to it. Once you are
      in, create your first mailbox under Settings &rarr; Accounts. Mail sent to
      an address with no mailbox is refused.</p>
   <p>Then send a message to <a href="https://mail-tester.com/">mail-tester.com</a>
-     &mdash; a few sentences of ordinary text, not one word &mdash; and check the
+     - a few sentences of ordinary text, not one word - and check the
      score. SPF, DKIM, DMARC, PTR and blacklists should all be green. Below 8,
      the report names the record that is wrong. You get 3 free tests a day.</p>
 </section>
