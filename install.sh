@@ -616,6 +616,13 @@ echo ""
 echo "Step 8: Generating Setup Guide"
 echo "------------------------------"
 
+# cron runs with no working directory, so the crontab line in both guides needs
+# the absolute path to this checkout rather than ./renew-ssl.sh. Defined here
+# because YOUR_SETUP.md below is the first thing to use it -- it used to live
+# further down next to the HTML page, which left the markdown's crontab line
+# reading "/renew-ssl.sh".
+INSTALL_PATH=$(pwd)
+
 cat > YOUR_SETUP.md << EOF
 # UNA Email Setup for $DOMAIN
 
@@ -886,18 +893,73 @@ otherwise the certificate request will fail.
 
 ---
 
-## Step 5: Add DANE/TLSA DNS Record
+## Step 5: Keep the Certificate Renewing
 
-DANE adds an extra layer of security by publishing your mail server's public key fingerprint
-in DNS. This allows other mail servers to verify your certificate directly through DNS,
-preventing man-in-the-middle attacks.
+Your certificate lasts 90 days. **Nothing renews it automatically** -- the installer does
+not touch your crontab -- so add this yourself:
 
-After running \`./renew-ssl.sh\` in the previous step, the script displayed your TLSA hash.
-Now go back to your domain registrar and add this DNS record:
+\`\`\`bash
+sudo crontab -e
+\`\`\`
 
-| Type | Host | Value |
-|------|------|-------|
-| TLSA | _25._tcp.$SMTP_SUBDOMAIN | 3 1 1 <hash-displayed-by-renew-ssl.sh> |
+Add one line:
+
+\`\`\`
+30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&1
+\`\`\`
+
+Daily is right even for a 90-day certificate: \`--cron\` is the quiet mode and does nothing
+until there are fewer than 30 days left.
+
+On a minimal CentOS/AlmaLinux image cron is often not installed. Check, and start it if it
+is missing:
+
+\`\`\`bash
+systemctl is-active crond || sudo dnf install -y cronie && sudo systemctl enable --now crond
+sudo crontab -l
+\`\`\`
+
+On Debian/Ubuntu the package and the service are both called \`cron\`. Test the entry
+without waiting for 2:30am -- it should exit 0 and do nothing:
+
+\`\`\`bash
+$INSTALL_PATH/renew-ssl.sh --cron; echo \$?
+\`\`\`
+
+---
+
+## Step 6: Add DANE/TLSA DNS Record (optional)
+
+DANE publishes your certificate's fingerprint in DNS so sending servers can verify it
+without trusting a certificate authority. It needs DNSSEC on your domain -- without it,
+TLSA records are ignored entirely.
+
+After running \`./renew-ssl.sh\`, the script printed your TLSA hash. It looks like
+\`3 1 1 <64 hex characters>\`.
+
+**Most registrars ask for the parts separately**, not as one string. The \`3 1 1\` is three
+separate settings and the hash is the value on its own -- do not paste \`3 1 1 <hash>\` into
+the value box.
+
+| Field | Value |
+|-------|-------|
+| Type | TLSA |
+| Port | **25** -- not 443. This protects SMTP, and forms often suggest 443. |
+| Protocol | _tcp |
+| Name / Host | $SMTP_SUBDOMAIN -- just the label. Port and Protocol build the \`_25._tcp\` part. If the form wants one long name, use \`_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN\`. |
+| Certificate Usage | 3 (DANE-EE: the certificate itself, no CA involved) |
+| Selector | 1 (match the public key, not the whole certificate) |
+| Matching Type | 1 (SHA-256) |
+| Value | The 64-character hash alone, with no \`3 1 1\` in front of it. |
+| TTL | default |
+
+**Watch the field order.** The wire format is Usage, Selector, Matching Type -- but many
+registrar forms list them as Usage, Matching Type, Selector. Here all three are \`3 1 1\`
+so it makes no difference, but do not fill them in top to bottom from the string out of
+habit.
+
+Some registrars take the whole record as one line instead. Then it is
+\`_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 <hash>\`.
 
 You can retrieve the hash at any time by running:
 
@@ -905,13 +967,22 @@ You can retrieve the hash at any time by running:
 openssl x509 -in ./letsencrypt/etc/live/$WEB_SUBDOMAIN.$DOMAIN/cert.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum
 \`\`\`
 
-**Note:** The TLSA hash is based on your certificate's public key, which stays the same
-across certificate renewals. You only need to update this DNS record if you perform
-a full reinstallation.
+Check it once published:
+
+\`\`\`bash
+dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short
+\`\`\`
+
+A space in the middle of the hash in that output is only \`dig\` wrapping a long string --
+the record is fine.
+
+**Note:** The hash is your certificate's public key and survives renewals
+(\`--reuse-key\`), so you only replace it after a full reinstall -- which does generate a
+new key, and until you update this record, senders that check DANE will refuse your mail.
 
 ---
 
-## Step 6: Access Your Email
+## Step 7: Access Your Email
 
 Open your browser and go to:
 
@@ -923,7 +994,7 @@ need it for the next step.
 
 ---
 
-## Step 7: Test Your Email Deliverability
+## Step 8: Test Your Email Deliverability
 
 Now that you have an email address, verify that everything is configured correctly:
 
@@ -1011,10 +1082,6 @@ echo "Step 8b: Generating Setup Page"
 echo "------------------------------"
 
 mkdir -p web-root/dns-setup
-
-# cron runs with no working directory, so the crontab line needs the absolute
-# path to this checkout rather than ./renew-ssl.sh.
-INSTALL_PATH=$(pwd)
 
 # What to look for BEFORE publishing anything: whether this zone already has an
 # MX, an SPF record or a DMARC record from another provider. Those three are
