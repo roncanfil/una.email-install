@@ -829,6 +829,11 @@ This script will:
 
 If a certificate already exists, it will attempt to renew it instead.
 
+**Save the hash it prints.** When the script finishes it outputs a 64-character hash -- the
+fingerprint of your certificate's public key. You need it in Step 6. Copy it somewhere now;
+you can always get it back with the command in that step, but it is easier to keep than to
+re-derive.
+
 **Note:** DNS records must be properly configured and propagated before running this script,
 otherwise the certificate request will fail.
 
@@ -1024,6 +1029,16 @@ echo "------------------------------"
 
 mkdir -p web-root/dns-setup
 
+# One verification check, as its own copyable row.
+#
+# $1 label, $2 the command, $3 what to expect. The command goes into the
+# data-copy attribute verbatim, so it must not contain a double quote -- none
+# of the dig lines do, and a > or | is fine inside an attribute value.
+verify_row() {
+    printf '  <div class="field">\n    <div class="fname">%s</div>\n    <div class="fval"><div class="copyrow"><code>%s</code><button class="copy" data-copy="%s">copy</button></div><div class="muted" style="margin-top:4px">%s</div></div>\n  </div>\n' \
+        "$1" "$2" "$2" "$3"
+}
+
 # What to look for BEFORE publishing anything: whether this zone already has an
 # MX, an SPF record or a DMARC record from another provider. Those three are
 # single-value -- a second one does not sit alongside the first, it breaks both
@@ -1053,6 +1068,11 @@ dig TXT $DOMAIN +short | grep -c v=spf1  # exactly 1, a 2 breaks SPF
 dig TXT una._domainkey.$DOMAIN +short
 dig -x $SERVER_IP +short        # expect: $SMTP_SUBDOMAIN.$DOMAIN."
     VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+    VERIFY_ROWS="$(verify_row "MX" "dig MX $DOMAIN +short" "expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.")
+$(verify_row "A record" "dig A $SMTP_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
+$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 &mdash; a 2 breaks SPF for every sender on your domain")
+$(verify_row "DKIM" "dig TXT una._domainkey.$DOMAIN +short" "expect: a long v=DKIM1 record")
+$(verify_row "PTR" "dig -x $SERVER_IP +short" "expect: $SMTP_SUBDOMAIN.$DOMAIN.")"
 else
     A_PLURAL="s"
     A_VERB=""
@@ -1071,6 +1091,12 @@ dig TXT $DOMAIN +short | grep -c v=spf1  # exactly 1, a 2 breaks SPF
 dig TXT una._domainkey.$DOMAIN +short
 dig -x $SERVER_IP +short         # expect: $SMTP_SUBDOMAIN.$DOMAIN."
     VERIFY_COMMANDS_ONELINE="dig MX $DOMAIN +short; dig A $SMTP_SUBDOMAIN.$DOMAIN +short; dig A $WEB_SUBDOMAIN.$DOMAIN +short; dig TXT $DOMAIN +short | grep -c v=spf1; dig TXT una._domainkey.$DOMAIN +short; dig -x $SERVER_IP +short"
+    VERIFY_ROWS="$(verify_row "MX" "dig MX $DOMAIN +short" "expect: 10 $SMTP_SUBDOMAIN.$DOMAIN.")
+$(verify_row "A &mdash; mail" "dig A $SMTP_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
+$(verify_row "A &mdash; web" "dig A $WEB_SUBDOMAIN.$DOMAIN +short" "expect: $SERVER_IP")
+$(verify_row "SPF" "dig TXT $DOMAIN +short | grep -c v=spf1" "expect: exactly 1 &mdash; a 2 breaks SPF for every sender on your domain")
+$(verify_row "DKIM" "dig TXT una._domainkey.$DOMAIN +short" "expect: a long v=DKIM1 record")
+$(verify_row "PTR" "dig -x $SERVER_IP +short" "expect: $SMTP_SUBDOMAIN.$DOMAIN.")"
 fi
 
 
@@ -1146,6 +1172,20 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     display: grid; place-items: center;
   }
   .num.alert { background: var(--warn-line); color: var(--warn-ink); }
+  .fields { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .field { display: flex; gap: 12px; padding: 9px 10px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .field:last-child { border-bottom: 0; }
+  .fname { flex: 0 0 150px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; padding-top: 4px; }
+  .fval { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 560px) { .field { flex-direction: column; gap: 4px; } .fname { flex: none; padding-top: 0; } }
+  details { margin-top: 10px; }
+  summary {
+    cursor: pointer; font-size: 14px; font-weight: 500;
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--code-bg); list-style-position: inside;
+  }
+  summary:hover { border-color: var(--accent); color: var(--accent); }
+  details[open] summary { margin-bottom: 12px; }
   h3 { font-size: 15px; margin: 20px 0 8px; }
   p { margin: 0 0 12px; }
   .muted { color: var(--muted); font-size: 14px; }
@@ -1212,8 +1252,11 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 </div>
 
 <section class="step" id="s0">
-  <h2><span class="num alert">!</span> Already using this domain elsewhere?</h2>
-  <p class="muted">Skip this if $DOMAIN is a brand-new domain with an empty DNS zone.</p>
+  <h2><span class="num alert">0</span> Already using this domain elsewhere?</h2>
+  <p class="muted">If $DOMAIN is a brand-new domain with an empty DNS zone, skip
+     this and start at step 1.</p>
+  <details>
+  <summary>Open this if $DOMAIN already has a website or email somewhere</summary>
   <p>If $DOMAIN already has a website or a mailbox somewhere else &mdash; GoDaddy,
      Squarespace, Wix, Google Workspace, Microsoft&nbsp;365 &mdash; UNA runs alongside it.</p>
   <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
@@ -1266,6 +1309,7 @@ cat > web-root/dns-setup/index.html << HTMLEOF
      <strong>DNS only</strong> (grey cloud, not orange). A proxied record breaks SMTP on
      port 25 completely, and serves visitors Cloudflare's certificate instead of the one
      <code>./renew-ssl.sh</code> issues.</p>
+  </details>
 </section>
 
 <section class="step" id="s1">
@@ -1304,13 +1348,20 @@ $A_RECORD_ROWS
   <h2><span class="num">2</span> Reverse DNS (PTR)</h2>
   <p>Set at your <strong>VPS provider</strong>, not your registrar. Without it most
      large providers will treat your mail as suspect.</p>
-  <table>
-    <thead><tr><th>Server IP</th><th>PTR value</th></tr></thead>
-    <tbody><tr>
-      <td data-label="Server IP"><code>$SERVER_IP</code></td>
-      <td data-label="PTR value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div></td>
-    </tr></tbody>
-  </table>
+  <!-- Two values, so a table is the wrong shape for it: td.val is width:100%,
+       which collapsed the "Server IP" column to min-content and crushed it
+       against the PTR value. A stacked field list reads better here and at
+       phone width. -->
+  <div class="fields">
+    <div class="field">
+      <div class="fname">Server IP</div>
+      <div class="fval"><div class="copyrow"><code>$SERVER_IP</code><button class="copy" data-copy="$SERVER_IP">copy</button></div></div>
+    </div>
+    <div class="field">
+      <div class="fname">PTR value</div>
+      <div class="fval"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN">copy</button></div></div>
+    </div>
+  </div>
   <ul>
     <li><strong>Vultr</strong> &mdash; Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
     <li><strong>DigitalOcean</strong> &mdash; rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
@@ -1322,15 +1373,25 @@ $A_RECORD_ROWS
 
 <section class="step" id="s3">
   <h2><span class="num">3</span> Verify propagation</h2>
-  <p class="muted">Wait 5&ndash;30 minutes, then run these from any machine.</p>
-  <pre>$VERIFY_COMMANDS</pre>
-  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE">copy</button></div>
+  <p class="muted">Wait 5&ndash;30 minutes, then run these from any machine. Each
+     one is copyable on its own, so you can work through them and see which
+     record is not there yet.</p>
+  <div class="fields">
+$VERIFY_ROWS
+  </div>
+  <div class="copyrow" style="margin-top:14px"><span class="mono">Run them all at once</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE">copy all</button></div>
 </section>
 
 <section class="step" id="s4">
   <h2><span class="num">4</span> SSL certificate</h2>
   <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
   <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh">copy</button></div>
+  <div class="note" style="margin-top:12px">
+    <strong>Save the hash it prints.</strong> When the script finishes it outputs
+    a 64-character hash, the fingerprint of your certificate's public key. You
+    need it in step 6. Copy it somewhere now &mdash; you can always get it back
+    with the command in step 6, but it is easier to keep than to re-derive.
+  </div>
   <p class="muted" style="margin-top:12px">One certificate is issued covering
      <strong>$WEB_SUBDOMAIN.$DOMAIN</strong> and <strong>$SMTP_SUBDOMAIN.$DOMAIN</strong>.
      Both names are validated over port 80, and the same certificate is used by
@@ -1340,22 +1401,46 @@ $A_RECORD_ROWS
 
 <section class="step" id="s5">
   <h2><span class="num">5</span> Keep the certificate renewing</h2>
-  <p>Your certificate lasts 90 days. Nothing renews it automatically &mdash; the
-     installer does not touch your crontab &mdash; so add this yourself:</p>
-  <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e">copy</button></div>
-  <p style="margin-top:12px">Add one line:</p>
-  <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1">copy</button></div>
-  <p class="muted" style="margin-top:12px">Daily is right even for a 90-day
-     certificate: <code>--cron</code> is the quiet mode and does nothing until
-     there are fewer than 30 days left.</p>
-  <p style="margin-top:12px">On a minimal CentOS/AlmaLinux image cron is often
-     not installed. Check, and start it if it is missing:</p>
-  <pre>systemctl is-active crond || sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond
-sudo crontab -l</pre>
-  <p class="muted">Debian/Ubuntu: the package is <code>cron</code> and the
-     service is <code>cron</code>. Test the entry without waiting for 2:30am
+  <p>Your certificate lasts 90 days and <strong>nothing renews it
+     automatically</strong> &mdash; the installer does not touch your crontab.
+     Three commands, on the server:</p>
+
+  <div class="fields">
+    <div class="field">
+      <div class="fname">1. Is cron running?</div>
+      <div class="fval">
+        <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond">copy</button></div>
+        <div class="muted" style="margin-top:4px">Prints <code>active</code> if it is. On a
+          minimal CentOS/AlmaLinux image it often is not installed &mdash; if so, install it:</div>
+        <div class="copyrow" style="margin-top:6px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond">copy</button></div>
+        <div class="muted" style="margin-top:4px">On Debian/Ubuntu the package and the service
+          are both called <code>cron</code>.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="fname">2. Open the crontab</div>
+      <div class="fval">
+        <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e">copy</button></div>
+        <div class="muted" style="margin-top:4px">Opens an editor. If it asks which one, pick nano.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="fname">3. Add this line</div>
+      <div class="fval">
+        <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1">copy</button></div>
+        <div class="muted" style="margin-top:4px">Paste it on its own line, then save and exit.
+          Daily is right even for a 90-day certificate: <code>--cron</code> is the quiet mode and
+          does nothing until fewer than 30 days remain.</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted">Check it took, and test the entry without waiting for 2:30am
      &mdash; it should exit 0 and do nothing:</p>
-  <div class="copyrow"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?">copy</button></div>
+  <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l">copy</button></div>
+  <div class="copyrow" style="margin-top:6px"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?">copy</button></div>
 </section>
 
 <section class="step" id="s6">
@@ -1405,8 +1490,9 @@ sudo crontab -l</pre>
     habit.
   </div>
 
-  <p>Some registrars take the whole record as one line instead. Then it is:</p>
-  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN &nbsp;TLSA&nbsp; 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN">copy name</button></div>
+  <p>Some registrars take the whole record as one line instead. Then it is
+     the following, with your saved hash in place of &lt;hash&gt;:</p>
+  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;">copy</button></div>
 
   <p style="margin-top:12px">Check it once published:</p>
   <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short">copy</button></div>
@@ -1503,15 +1589,5 @@ echo "📄 Your personalized setup guide is ready. Open it in a browser:"
 echo ""
 echo "   http://$SERVER_IP/dns-setup"
 echo ""
-echo "   Plain HTTP and an IP address on purpose -- the records it gives you"
-echo "   are what make the hostname and the certificate work. Every value has"
-echo "   a copy button."
-echo ""
-echo "   If $DOMAIN already has a website or email somewhere else, read the"
-echo "   first section of that page before you touch DNS."
-echo ""
-echo "   Same content in the terminal:  cat YOUR_SETUP.md"
-echo ""
-echo "🌐 Once complete, access your email at:"
-echo "   https://$WEB_SUBDOMAIN.$DOMAIN"
+echo "   Also on the server as YOUR_SETUP.md, if you prefer to read it here."
 echo ""
