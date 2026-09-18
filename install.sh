@@ -153,10 +153,21 @@ echo "-------------------------"
 # keeps that password for the life of the volume. Generating a fresh one on a
 # re-run writes a password the database does not have, and every container then
 # fails to authenticate against a database that was working a minute earlier.
-EXISTING_DB_PASSWORD=""
-if [ -f .env ]; then
-    EXISTING_DB_PASSWORD=$(grep -E '^[[:space:]]*DB_PASSWORD=.+' .env | head -1 | cut -d= -f2- | tr -d '"'"'"' ' || true)
-fi
+# A value already in .env, or empty.
+#
+# This script is re-runnable by design and says so on every failure path, so a
+# re-run must not mint new secrets over working ones. Each of them means
+# something to state that outlives the run: Postgres keeps the password its
+# volume was initialised with, RELAY_KEY is the only thing that can decrypt a
+# stored relay credential, VAPID identifies this server to push subscriptions
+# that browsers have already accepted, and SESSION_SECRET signs the cookie
+# every signed-in browser is holding.
+existing_env_value() {
+    [ -f .env ] || return 0
+    grep -E "^[[:space:]]*$1=.+" .env | head -1 | cut -d= -f2- | tr -d '"'"'"' ' || true
+}
+
+EXISTING_DB_PASSWORD="$(existing_env_value DB_PASSWORD)"
 
 if [ -n "$EXISTING_DB_PASSWORD" ]; then
     DB_PASSWORD="$EXISTING_DB_PASSWORD"
@@ -193,18 +204,26 @@ SERVER_IP=$(curl -4 -s ifconfig.me 2>/dev/null || curl -4 -s icanhazip.com 2>/de
 
 # Rspamd controller password. Not prompted for: nobody types this, it just has
 # to stop being the image default "q1" on the controller that owns /learnspam.
-RSPAMD_PASSWORD=$(openssl rand -base64 24)
+RSPAMD_PASSWORD="$(existing_env_value RSPAMD_PASSWORD)"
+[ -n "$RSPAMD_PASSWORD" ] || RSPAMD_PASSWORD=$(openssl rand -base64 24)
 
 # Session signing secret. Not prompted for either: it signs the cookie that
 # keeps a browser signed in, and it only has to be random and stay put.
-SESSION_SECRET=$(openssl rand -base64 32)
+# Regenerating this signs every browser out, which is a poor thank-you for
+# re-running the installer to pick up a fix.
+SESSION_SECRET="$(existing_env_value SESSION_SECRET)"
+[ -n "$SESSION_SECRET" ] || SESSION_SECRET=$(openssl rand -base64 32)
 
 # Encrypts the outbound relay password in the database, so a dump on its own
 # does not yield a live sending credential. Generated whether or not a relay is
 # ever configured: it costs nothing, and the alternative is asking for it at
 # the worst possible moment -- when mail has started bouncing and the operator
 # is trying to switch to a relay in a hurry.
-RELAY_KEY=$(openssl rand -base64 32)
+# The one that actually breaks something: a new key cannot decrypt the relay
+# password already stored in the database, so outbound mail would fail to
+# authenticate until the credentials were entered again.
+RELAY_KEY="$(existing_env_value RELAY_KEY)"
+[ -n "$RELAY_KEY" ] || RELAY_KEY=$(openssl rand -base64 32)
 
 # Web Push (VAPID) keypair. Also not prompted for.
 #
@@ -230,13 +249,20 @@ RELAY_KEY=$(openssl rand -base64 32)
 # Web Push would have been quietly signing with a corrupt key. The private key
 # is 43 characters and never wrapped, but it gets the same treatment so the two
 # cannot drift.
-VAPID_PEM=$(mktemp)
-openssl ecparam -name prime256v1 -genkey -noout -out "$VAPID_PEM" 2>/dev/null
-VAPID_PRIVATE_KEY=$(openssl ec -in "$VAPID_PEM" -outform DER 2>/dev/null \
-  | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
-VAPID_PUBLIC_KEY=$(openssl ec -in "$VAPID_PEM" -pubout -outform DER 2>/dev/null \
-  | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')
-rm -f "$VAPID_PEM"
+# Reused as a pair or minted as a pair, never mixed: the public half is what
+# browsers already holding a push subscription verify against, so half of a new
+# keypair would leave every existing subscription failing silently.
+VAPID_PUBLIC_KEY="$(existing_env_value VAPID_PUBLIC_KEY)"
+VAPID_PRIVATE_KEY="$(existing_env_value VAPID_PRIVATE_KEY)"
+if [ -z "$VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY" ]; then
+    VAPID_PEM=$(mktemp)
+    openssl ecparam -name prime256v1 -genkey -noout -out "$VAPID_PEM" 2>/dev/null
+    VAPID_PRIVATE_KEY=$(openssl ec -in "$VAPID_PEM" -outform DER 2>/dev/null \
+      | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
+    VAPID_PUBLIC_KEY=$(openssl ec -in "$VAPID_PEM" -pubout -outform DER 2>/dev/null \
+      | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')
+    rm -f "$VAPID_PEM"
+fi
 
 # The outbound relay keys, always written and always commented out.
 #
