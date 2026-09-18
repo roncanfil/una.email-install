@@ -1187,7 +1187,15 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     text-rendering: optimizeLegibility;
   }
 
-  .wrap { max-width: 760px; margin: 0 auto; }
+  /* The card sets the measure, and everything inside it shares that one.
+     Paragraphs used to carry their own max-width of 68ch, which is the right
+     number for long-form prose and the wrong one here: tables, code blocks and
+     copy rows all run the full width of the card, so the paragraphs stopped
+     short of them and left a gutter down the right that read as a misaligned
+     column. 720px at this size is a little over the ideal line length, and
+     agreeing with everything around it is worth more than the last few
+     characters. */
+  .wrap { max-width: 720px; margin: 0 auto; }
 
   /* ---- Masthead ---------------------------------------------------- */
 
@@ -1269,11 +1277,11 @@ cat > web-root/dns-setup/index.html << HTMLEOF
     color: var(--ink);
   }
 
-  p { margin: 0 0 12px; color: var(--ink-2); max-width: 68ch; }
+  p { margin: 0 0 12px; color: var(--ink-2); }
   .muted { color: var(--muted); font-size: 13.5px; }
   strong { color: var(--ink); font-weight: 600; }
 
-  ul, ol { margin: 10px 0; padding-left: 20px; color: var(--ink-2); max-width: 68ch; }
+  ul, ol { margin: 10px 0; padding-left: 20px; color: var(--ink-2); }
   li { margin-bottom: 6px; }
   li::marker { color: var(--muted); }
 
