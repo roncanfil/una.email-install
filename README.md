@@ -258,16 +258,88 @@ the backup.
 Backups land in `backups/backup_<timestamp>.sql` and are plain `pg_dump` SQL.
 To put one back, see **Restore the database** below.
 
+Note what this one is and is not. It exists to undo a failed migration, so it
+covers what an update can break: the database. It is not disaster recovery —
+your attachments, `.env` and DKIM keys are not in it. That is **Back up
+everything**, next.
+
+### Back up everything
+
+```bash
+./backup.sh
+```
+
+Writes `backups/una-backup_<timestamp>.tar.gz` holding everything that makes
+this install *this install*:
+
+| In the archive | Why it has to be |
+|---|---|
+| `database.sql` | The mail, the accounts, the settings. |
+| `attachments.tar` | The attachment files. They live in a Docker volume and have never been inside a `pg_dump`, so a database backup on its own restores rows pointing at files that are not there. |
+| `env` | `DOMAIN` and the secrets. `SESSION_SECRET` signs every session, `RELAY_KEY` decrypts the stored relay password, and the `VAPID_*` pair is the identity every existing push subscription was made against. |
+| `dkim/` | The private keys whose public half your DNS publishes. Sign with a different key and outbound mail fails DMARC — which breaks delivery without breaking anything you can see. |
+
+Not included, on purpose: **TLS certificates** (re-issue with `./renew-ssl.sh`,
+which is quicker than carrying certbot's renewal state between machines) and
+**Rspamd's Bayes training** (it lives in the `redis_data` volume and is rebuilt
+by using the product; a moved install starts on the shipped rules and relearns).
+
+```bash
+./backup.sh --no-compress        # faster, and no bigger, when the bulk is images and PDFs
+./backup.sh --output /mnt/backup # somewhere other than backups/
+```
+
+> **This archive is the root of your install in one file** — DKIM private keys,
+> the database password, the session secret. It is written mode `600` into
+> `backups/`, which is gitignored. Copy it the way you would copy a server
+> password, and do not leave it anywhere the web server can reach.
+
+### Move to another server
+
+On the old server:
+
+```bash
+./backup.sh
+```
+
+Copy the archive across, then on the new one — with DNS still pointing at the
+old machine, so nothing is lost while you work:
+
+```bash
+git clone https://github.com/roncanfil/una.email-install.git
+cd una.email-install
+./install.sh                                   # same DOMAIN as the old server
+./restore.sh una-backup_20260922_181500.tar.gz --with-secrets
+./renew-ssl.sh                                 # TLS is not in the archive
+```
+
+`--with-secrets` is what makes it a move rather than a copy of the data. It puts
+back `SESSION_SECRET`, `RELAY_KEY`, the `VAPID_*` pair and the `dkim/` keys, so
+signed-in sessions survive, the relay credentials still decrypt, existing push
+subscriptions keep working and your **existing DKIM DNS record still matches** —
+no DNS change needed for mail to keep signing.
+
+`DOMAIN`, `DB_PASSWORD` and `RSPAMD_PASSWORD` are always left as the new install
+generated them. The database role on a fresh install was created with that
+machine's `DB_PASSWORD`, and rewriting `.env` to say something else would stop
+the app connecting to the database it had just restored.
+
+Only when the mail looks right on the new machine, repoint your MX and A records.
+
 ### Restore the database
 
 ```bash
-./restore.sh backups/backup_20260922_181500.sql
+./restore.sh backups/backup_20260922_181500.sql          # a bare dump
+./restore.sh backups/una-backup_20260922_181500.tar.gz   # a full archive
 ```
 
-Replaces the database with the contents of a dump file — one of this script's
-own backups, or one you took yourself. Plain SQL from `pg_dump`, gzipped or
-not; `.sql` and `.sql.gz` both work, and the script decides by reading the file
-rather than by its name.
+Takes either a `pg_dump` SQL file or an archive from `./backup.sh`, and works
+out which by reading it. A bare dump replaces the database and nothing else; an
+archive also replaces the attachment files, and the secrets too when you pass
+`--with-secrets`.
+
+Dumps can be gzipped or not — `.sql` and `.sql.gz` both work, and so does one
+of `update.sh`'s own backups or one you took yourself.
 
 This is a terminal job rather than a screen in the app on purpose. A dump of a
 real mailbox runs to gigabytes, and pushing one through a browser upload means
@@ -283,8 +355,9 @@ What it does, in order:
 - reads the file without changing anything — that it really is a `pg_dump`, and
   which PostgreSQL wrote it (a dump from a newer major is refused, because it
   will not go into an older server)
-- dumps the current database to `backups/pre-restore_<timestamp>.sql`, so an
-  unwanted restore is itself reversible
+- backs up what is there now, so an unwanted restore is itself reversible — a
+  dump for a bare `.sql`, and a full `./backup.sh` archive when files or keys
+  are about to be replaced, since a dump alone would not be a way back from that
 - stops everything but PostgreSQL, so nothing writes half way through
 - **drops and recreates the database.** A plain `pg_dump` contains `CREATE` and
   no `DROP`, so restoring it onto a live database would merge two datasets
@@ -298,9 +371,10 @@ What it does, in order:
 Options:
 
 ```bash
-./restore.sh dump.sql --check       # inspect the file, change nothing
-./restore.sh dump.sql --yes         # no confirmation prompt, for scripts
-./restore.sh dump.sql --no-backup   # skip the pre-restore dump
+./restore.sh file --check          # inspect it, change nothing
+./restore.sh file --with-secrets   # archives only: also restore .env keys and dkim/
+./restore.sh file --yes            # no confirmation prompt, for scripts
+./restore.sh file --no-backup      # skip the safety backup taken first
 ```
 
 `--check` is worth running first on a file you did not make yourself, or one
