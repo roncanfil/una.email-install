@@ -256,13 +256,64 @@ Run with nothing on a terminal (from cron, say) and no `UNA_BACKUP`, it takes
 the backup.
 
 Backups land in `backups/backup_<timestamp>.sql` and are plain `pg_dump` SQL.
-To restore one by hand:
+To put one back, see **Restore the database** below.
+
+### Restore the database
 
 ```bash
-docker compose down
-docker compose up -d postgres
-docker compose exec -T postgres psql -U una_email una_email < backups/backup_20260922_181500.sql
-docker compose up -d
+./restore.sh backups/backup_20260922_181500.sql
+```
+
+Replaces the database with the contents of a dump file — one of this script's
+own backups, or one you took yourself. Plain SQL from `pg_dump`, gzipped or
+not; `.sql` and `.sql.gz` both work, and the script decides by reading the file
+rather than by its name.
+
+This is a terminal job rather than a screen in the app on purpose. A dump of a
+real mailbox runs to gigabytes, and pushing one through a browser upload means
+buffering it, timing out on it, and letting the web container run a `psql` it
+has no business running. The app exports; the terminal imports.
+
+**It will ask you to type `restore`.** Every message, account, alias and setting
+in the database is replaced. The mail on disk is not touched, but the database
+that indexes it is.
+
+What it does, in order:
+
+- reads the file without changing anything — that it really is a `pg_dump`, and
+  which PostgreSQL wrote it (a dump from a newer major is refused, because it
+  will not go into an older server)
+- dumps the current database to `backups/pre-restore_<timestamp>.sql`, so an
+  unwanted restore is itself reversible
+- stops everything but PostgreSQL, so nothing writes half way through
+- **drops and recreates the database.** A plain `pg_dump` contains `CREATE` and
+  no `DROP`, so restoring it onto a live database would merge two datasets
+  rather than replace one
+- restores with `ON_ERROR_STOP`, so a failure is a failure rather than a
+  half-populated database reporting success. The output goes to
+  `backups/restore_<timestamp>.log`
+- brings the stack back up and runs the migrations, because a dump from an
+  older release restores an older schema
+
+Options:
+
+```bash
+./restore.sh dump.sql --check       # inspect the file, change nothing
+./restore.sh dump.sql --yes         # no confirmation prompt, for scripts
+./restore.sh dump.sql --no-backup   # skip the pre-restore dump
+```
+
+`--check` is worth running first on a file you did not make yourself, or one
+that took a long time to copy: it answers "would this restore?" without
+stopping anything.
+
+If the restore fails part-way, the script says so, prints the tail of the log,
+and leaves the stack down apart from PostgreSQL — deliberately, since starting
+the app against a half-restored database only adds to what has to be undone.
+Put back what you had with the pre-restore dump it names:
+
+```bash
+./restore.sh backups/pre-restore_20260922_181500.sql
 ```
 
 ### Postgres 15 to 18

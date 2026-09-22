@@ -577,7 +577,14 @@ else
             docker compose exec -T postgres pg_isready -U una_email > /dev/null 2>&1 && break
             sleep 1
         done
-        docker compose exec -T postgres psql -U una_email una_email < "$BACKUP_FILE"
+        # ON_ERROR_STOP: without it psql skips what it cannot apply and still
+        # exits 0, so a rollback that only half worked would announce itself as
+        # a success. A plain pg_dump has no DROPs of its own either, which is
+        # why the database is recreated rather than restored over.
+        docker compose exec -T postgres psql -U una_email -d postgres -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS una_email WITH (FORCE)" \
+            -c "CREATE DATABASE una_email OWNER una_email" > /dev/null
+        docker compose exec -T postgres psql -U una_email una_email -v ON_ERROR_STOP=1 < "$BACKUP_FILE"
         docker compose up -d
         echo ""
         echo "✅ Rolled back to previous state"
@@ -587,10 +594,7 @@ else
         echo "   The database is part-way through a migration and the new"
         echo "   images are already pulled. If you have a dump of your own:"
         echo ""
-        echo "     docker compose down"
-        echo "     docker compose up -d postgres"
-        echo "     docker compose exec -T postgres psql -U una_email una_email < your-dump.sql"
-        echo "     docker compose up -d"
+        echo "     ./restore.sh your-dump.sql"
     fi
 
     echo ""
