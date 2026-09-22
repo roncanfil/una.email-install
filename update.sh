@@ -379,26 +379,78 @@ echo ""
 echo "Step 4: Creating Backup"
 echo "-----------------------"
 
-BACKUP_DIR="backups"
-mkdir -p "$BACKUP_DIR"
-
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/backup_${TIMESTAMP}.sql"
-
-echo "📦 Backing up database..."
-if docker compose exec -T postgres pg_dump -U una_email una_email > "$BACKUP_FILE" 2>/dev/null; then
-    BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
-    echo "✅ Backup saved: $BACKUP_FILE ($BACKUP_SIZE)"
-else
-    echo "⚠️  Could not create backup (database may not be running)"
-    echo ""
-    read -p "Continue without backup? (y/N): " CONTINUE
-    if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
-        echo "Update cancelled."
+# The dump is not a courtesy copy -- it is this script's rollback. If the
+# migration in step 7 fails, step 7 restores from it and puts you back where
+# you started. Skipping is allowed, because on a large mailbox it is the
+# slowest part of an update and an operator with their own snapshots does not
+# need a second one, but skipping means a failed migration stops and waits for
+# a human instead of undoing itself. So: asked, not assumed, and the default is
+# yes.
+#
+# UNA_BACKUP=0 (or no/false) skips without asking, 1 (or yes/true) takes it
+# without asking -- for cron and for anyone scripting this. A command-line
+# assignment survives the re-exec at the top of this script, because it is in
+# the environment rather than in "$@".
+#
+# When nothing is on a terminal -- piped, or run from a job -- `read` sees EOF
+# and returns non-zero, which under this script's `set -e` would end the update
+# right here without printing a thing. `|| BACKUP_CHOICE=""` swallows that, and
+# an empty answer is the default: an unattended update backs up.
+BACKUP_WANTED="ask"
+case "$(printf '%s' "${UNA_BACKUP:-}" | tr '[:upper:]' '[:lower:]')" in
+    0|no|false) BACKUP_WANTED="no" ;;
+    1|yes|true) BACKUP_WANTED="yes" ;;
+    "") ;;
+    *)
+        echo "❌ UNA_BACKUP must be 0/no/false or 1/yes/true (got '$UNA_BACKUP')."
         exit 1
+        ;;
+esac
+
+if [ "$BACKUP_WANTED" = "ask" ]; then
+    echo "A backup is what this script restores from if the database migration"
+    echo "fails. Without one, a failed migration leaves the update stopped"
+    echo "part-way and needs fixing by hand."
+    echo ""
+    BACKUP_CHOICE=""
+    read -p "Back up the database first? (Y/n): " BACKUP_CHOICE || BACKUP_CHOICE=""
+    case "$BACKUP_CHOICE" in
+        n|N|no|NO|No) BACKUP_WANTED="no" ;;
+        *) BACKUP_WANTED="yes" ;;
+    esac
+    echo ""
+fi
+
+BACKUP_FILE=""
+
+if [ "$BACKUP_WANTED" = "no" ]; then
+    echo "⏭️  Skipping backup — a failed migration will not roll back on its own."
+else
+    BACKUP_DIR="backups"
+    mkdir -p "$BACKUP_DIR"
+
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="$BACKUP_DIR/backup_${TIMESTAMP}.sql"
+
+    echo "📦 Backing up database..."
+    if docker compose exec -T postgres pg_dump -U una_email una_email > "$BACKUP_FILE" 2>/dev/null; then
+        BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
+        echo "✅ Backup saved: $BACKUP_FILE ($BACKUP_SIZE)"
+    else
+        echo "⚠️  Could not create backup (database may not be running)"
+        echo ""
+        # Same EOF-under-`set -e` care as above; here an empty answer means
+        # cancel, so an unattended update stops rather than pressing on
+        # without the rollback it expected to have.
+        CONTINUE=""
+        read -p "Continue without backup? (y/N): " CONTINUE || CONTINUE=""
+        if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
+            echo "Update cancelled."
+            exit 1
+        fi
+        rm -f "$BACKUP_FILE"
+        BACKUP_FILE=""
     fi
-    rm -f "$BACKUP_FILE"
-    BACKUP_FILE=""
 fi
 echo ""
 
@@ -530,6 +582,15 @@ else
         echo ""
         echo "✅ Rolled back to previous state"
         echo "   Your data has been restored from: $BACKUP_FILE"
+    else
+        echo "⚠️  No backup was taken, so nothing was rolled back."
+        echo "   The database is part-way through a migration and the new"
+        echo "   images are already pulled. If you have a dump of your own:"
+        echo ""
+        echo "     docker compose down"
+        echo "     docker compose up -d postgres"
+        echo "     docker compose exec -T postgres psql -U una_email una_email < your-dump.sql"
+        echo "     docker compose up -d"
     fi
 
     echo ""

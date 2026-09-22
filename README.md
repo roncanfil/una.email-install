@@ -228,14 +228,42 @@ This will:
   not just the container images
 - Add `RSPAMD_PASSWORD` to your `.env` if you do not have one yet
 - Upgrade PostgreSQL 15 to 18 if you are still on 15 (see below)
-- Backup your database
+- Ask whether to back up your database first (default yes)
 - Pull latest images
 - Run migrations
-- Automatically rollback if anything fails
+- Automatically rollback if anything fails — from that backup
 
 Because it pulls this repository, run it from the checkout you installed from
 and leave your local edits out of tracked files. Your `.env` is not tracked and
 is never modified except to add a missing `RSPAMD_PASSWORD`.
+
+#### The backup question
+
+The dump the script takes is what it restores from if the migration fails, so
+the answer that keeps the update reversible is yes. Say no when the mailbox is
+large enough that dumping it is the slow part of an update and you already have
+snapshots of your own — a failed migration then stops and waits for you instead
+of undoing itself.
+
+Answer it ahead of time when scripting the update:
+
+```bash
+UNA_BACKUP=0 ./update.sh    # skip the backup
+UNA_BACKUP=1 ./update.sh    # take it, no question asked
+```
+
+Run with nothing on a terminal (from cron, say) and no `UNA_BACKUP`, it takes
+the backup.
+
+Backups land in `backups/backup_<timestamp>.sql` and are plain `pg_dump` SQL.
+To restore one by hand:
+
+```bash
+docker compose down
+docker compose up -d postgres
+docker compose exec -T postgres psql -U una_email una_email < backups/backup_20260922_181500.sql
+docker compose up -d
+```
 
 ### Postgres 15 to 18
 
