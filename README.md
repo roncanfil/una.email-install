@@ -568,6 +568,25 @@ and exits:
 
 ---
 
+## License
+
+UNA is proprietary software, licensed under the [UNA End User License
+Agreement](LICENSE), which `install.sh` asks you to accept. Every install is
+free to evaluate for 90 days; after that it needs a yearly license key from
+<https://license.una.email>, pasted into Settings → License.
+
+UNA checks its license with license.una.email when it starts and once a day,
+sending only its install id, mail domain and license key — never mail or user
+data. The server needs outbound HTTPS to reach it; an install that cannot
+confirm its license for 14 days restricts itself as if the license had
+expired.
+
+The container images are public so that anyone can install UNA, but their
+contents are not open source: copying, modifying, reverse engineering or
+redistributing UNA or any part of its images is not permitted.
+
+---
+
 ## Support
 
 - Documentation: https://una.email/docs

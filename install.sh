@@ -12,6 +12,26 @@ echo "=========================================="
 echo ""
 
 # ============================================
+# License
+# ============================================
+# Acceptance is asked for, not assumed: an agreement the installer had to say
+# "yes" to is a far stronger one to enforce than a file nobody opened.
+# UNA_ACCEPT_LICENSE=yes answers it for scripted installs.
+echo "UNA is proprietary software, licensed under the agreement in ./LICENSE."
+echo "It is free to evaluate for 90 days; after that it needs a yearly license"
+echo "key from https://license.una.email. Copying, modifying, reverse"
+echo "engineering or redistributing UNA, its images or its code is not permitted."
+echo ""
+if [ "${UNA_ACCEPT_LICENSE:-}" != "yes" ]; then
+    read -p "Type 'yes' to accept the license agreement: " LICENSE_ANSWER
+    if [ "$LICENSE_ANSWER" != "yes" ]; then
+        echo "❌ The license was not accepted. Nothing was installed."
+        exit 1
+    fi
+fi
+echo ""
+
+# ============================================
 # Step 1: Check Prerequisites
 # ============================================
 echo "Step 1: Checking Prerequisites"
