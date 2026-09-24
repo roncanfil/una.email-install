@@ -1074,6 +1074,11 @@ echo "------------------------------"
 
 mkdir -p web-root/dns-setup
 
+# The page's picture and fonts, served next to it from the same folder, so the
+# page loads nothing from anywhere else. If they are missing the page still
+# works, on system fonts and a plain dark header.
+cp assets/dns-setup/setup.webp assets/dns-setup/geist.woff2 assets/dns-setup/geist-mono.woff2 web-root/dns-setup/ 2>/dev/null || true
+
 # One verification check, as its own copyable row.
 #
 # $1 label, $2 the command, $3 what to expect. The command goes into the
@@ -1155,782 +1160,838 @@ cat > web-root/dns-setup/index.html << HTMLEOF
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>UNA Email setup - $DOMAIN</title>
+<title>UNA setup - $DOMAIN</title>
+<script>document.documentElement.classList.add('js');</script>
 <style>
-  /* Design tokens.
-     ---------------------------------------------------------------------
-     One scale, one set of curves. The page is read once, on a bad day,
-     usually while someone is switching between this and a registrar's
-     control panel -- so the job is hierarchy and calm, not decoration. */
-  :root {
-    color-scheme: light dark;
+  /* The same look as una.email/install: the camp picture, big step numbers,
+     and one colour per place a step happens. Everything is served from this
+     folder -- the picture and the two fonts sit next to this file -- so the
+     page loads nothing from anywhere else, and works before DNS does. */
 
-    --bg: #f7f8fa;
-    --surface: #ffffff;
-    --surface-2: #f2f4f7;
-    --ink: #11151a;
-    --ink-2: #3d4652;
-    --muted: #6b7482;
-    --line: #e4e8ee;
-    --line-strong: #d3d9e2;
-    --accent: #2f6df6;
+  @font-face {
+    font-family: "Geist";
+    src: url("/dns-setup/geist.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Geist Mono";
+    src: url("/dns-setup/geist-mono.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+  }
+
+  :root {
+    color-scheme: light;
+    --bg: #fcfaf7;
+    --surface: #f5f1eb;
+    --surface-2: #efe9e0;
+    --ink: #16130f;
+    --ink-2: #4a4540;
+    --muted: #625c55;
+    --line: #e6e0d7;
+    --line-strong: #d6cec2;
+    --accent: #16130f;
     --accent-ink: #ffffff;
     --ok: #0f7b46;
-    --warn-bg: #fff8ec;
-    --warn-line: #f0c674;
-    --warn-ink: #6b4a00;
 
-    /* Strong curves. The built-in CSS easings are too weak to read as
-       intentional; never ease-in, which delays the frame the eye is on. */
-    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-    --radius-card: 14px;
-    --radius-inner: 8px;
-    --pad-card: 6px;
+    /* Over the picture: the same in both themes. */
+    --on-image: #ffffff;
+    --on-image-muted: rgb(255 255 255 / 0.82);
+    --night: #120e16;
+    --glass: rgb(18 14 22 / 0.3);
+    --glass-line: rgb(255 255 255 / 0.18);
+    --scrim: rgb(12 9 16);
 
-    /* Borders carry structure; depth comes from layered shadow. */
-    --shadow-card:
-      0 1px 2px oklch(0 0 0 / 0.04),
-      0 4px 12px oklch(0 0 0 / 0.04);
-    --shadow-raised:
-      0 1px 2px oklch(0 0 0 / 0.06),
-      0 8px 24px oklch(0 0 0 / 0.06);
+    /* The four tones from the picture: a tint to fill, an ink to write in,
+       a line to border with. Each place a step happens has one. */
+    --ember-tint: #fcefe4; --ember-ink: #b3501a; --ember-line: #f3d5bd;
+    --rose-tint: #fbedf0; --rose-ink: #a83b58; --rose-line: #f0cfd8;
+    --lavender-tint: #f1eefb; --lavender-ink: #5746ad; --lavender-line: #dcd5f3;
+    --sky-tint: #eaf0f9; --sky-ink: #2b5192; --sky-line: #cddaee;
+
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0e1116;
-      --surface: #161a21;
-      --surface-2: #1d222a;
-      --ink: #e8ecf1;
-      --ink-2: #b7c0cc;
-      --muted: #8b95a3;
-      --line: #262c36;
-      --line-strong: #333b47;
-      --accent: #7aa5ff;
-      --accent-ink: #0e1116;
+      color-scheme: dark;
+      --bg: #0d0e17;
+      --surface: #161827;
+      --surface-2: #1d2033;
+      --ink: #f2f1f4;
+      --ink-2: #c3c2cf;
+      --muted: #9d9cad;
+      --line: #282a3d;
+      --line-strong: #34374d;
+      --accent: #f2f1f4;
+      --accent-ink: #0d0e17;
       --ok: #5fd39b;
-      --warn-bg: #241d10;
-      --warn-line: #5c4d20;
-      --warn-ink: #edd7a2;
-      --shadow-card:
-        0 1px 2px oklch(0 0 0 / 0.3),
-        0 4px 12px oklch(0 0 0 / 0.25);
-      --shadow-raised:
-        0 1px 2px oklch(0 0 0 / 0.35),
-        0 8px 24px oklch(0 0 0 / 0.35);
+      --ember-tint: #2a1b14; --ember-ink: #ffad72; --ember-line: #4b2e1f;
+      --rose-tint: #29161d; --rose-ink: #f39bb1; --rose-line: #4a2733;
+      --lavender-tint: #1d1a31; --lavender-ink: #b6aaf6; --lavender-line: #353056;
+      --sky-tint: #141c30; --sky-ink: #95b5f1; --sky-line: #273453;
     }
   }
 
   * { box-sizing: border-box; }
-
+  html { scroll-behavior: smooth; }
   body {
     margin: 0;
-    padding: 0 20px 96px;
     background: var(--bg);
     color: var(--ink);
-    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font: 16px/1.65 var(--sans);
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 4px; }
 
-  /* The card sets the measure, and everything inside it shares that one.
-     Paragraphs used to carry their own max-width of 68ch, which is the right
-     number for long-form prose and the wrong one here: tables, code blocks and
-     copy rows all run the full width of the card, so the paragraphs stopped
-     short of them and left a gutter down the right that read as a misaligned
-     column. 720px at this size is a little over the ideal line length, and
-     agreeing with everything around it is worth more than the last few
-     characters. */
-  .wrap { max-width: 720px; margin: 0 auto; }
+  .wrap { max-width: 64rem; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 640px) { .wrap { padding: 0 24px; } }
 
-  /* ---- Masthead ---------------------------------------------------- */
+  /* ---- The picture --------------------------------------------------- */
 
-  header { padding: 56px 0 28px; }
-  h1 {
-    font-size: 30px;
-    line-height: 1.15;
-    letter-spacing: -0.021em;
-    margin: 0 0 10px;
-    font-weight: 640;
+  .scene-frame { padding: 8px; }
+  .scene {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: 24px;
+    background: var(--night);
+    color: var(--on-image);
+    min-height: 68vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 96px 16px 160px;
   }
-  .sub {
-    color: var(--muted);
+  .scene-img {
+    position: absolute; inset: 0; z-index: -2;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: 80% 75%;
+    transform-origin: 80% 75%;
+  }
+  .scene-scrim {
+    position: absolute; inset: 0; z-index: -1;
+    background:
+      linear-gradient(to bottom, color-mix(in srgb, var(--scrim) 60%, transparent), transparent 70%),
+      linear-gradient(to top, color-mix(in srgb, var(--scrim) 40%, transparent), transparent 35%);
+  }
+  .scene-copy {
+    max-width: 44rem;
+    text-shadow: 0 1px 16px color-mix(in srgb, var(--scrim) 55%, transparent);
+  }
+  .pill {
+    display: inline-block;
+    border: 1px solid var(--glass-line);
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border-radius: 999px;
+    padding: 4px 12px;
     font-size: 14px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    align-items: center;
+    color: var(--on-image-muted);
+    text-shadow: none;
   }
-  .sub .dot { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.5; }
-
-  /* ---- Step cards -------------------------------------------------- */
-
-  .step {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    /* Outer radius = inner radius + padding: 8 + 6 = 14. Nested corners
-       that do not agree are the single most common reason a layout reads
-       as slightly wrong without anyone being able to say why. */
-    border-radius: var(--radius-card);
-    padding: 22px var(--pad-card) var(--pad-card);
-    margin-bottom: 14px;
-    box-shadow: var(--shadow-card);
-  }
-  .step > *:not(.fields):not(table):not(pre):not(.note):not(details) {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .step > .fields, .step > table, .step > pre, .step > .note, .step > details {
-    margin-left: var(--pad-card);
-    margin-right: var(--pad-card);
-    width: calc(100% - var(--pad-card) * 2);
-  }
-
-  h2 {
-    font-size: 17px;
-    font-weight: 620;
-    letter-spacing: -0.011em;
-    margin: 0 0 14px;
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    line-height: 1.3;
-  }
-
-  /* The step number. Optically centred: the digit's own bearing sits it a
-     hair high inside a circle, so the box is nudged down by half a pixel
-     rather than the glyph being left to look wrong. */
-  .num {
-    flex: 0 0 auto;
-    width: 25px; height: 25px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--accent-ink);
-    font-size: 12.5px;
+  h1 {
+    margin: 24px 0 0;
+    font-size: 48px;
+    line-height: 1.05;
     font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    display: grid;
-    place-items: center;
-    transform: translateY(0.5px);
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
   }
-  .num.alert { background: var(--warn-line); color: var(--warn-ink); }
-
-  h3 {
-    font-size: 14.5px;
-    font-weight: 620;
-    letter-spacing: -0.006em;
-    margin: 22px 0 8px;
-    color: var(--ink);
+  @media (min-width: 640px) { h1 { font-size: 60px; } }
+  @media (min-width: 1024px) { h1 { font-size: 72px; } }
+  .lede {
+    margin: 24px auto 0;
+    max-width: 40rem;
+    font-size: 18px;
+    color: var(--on-image-muted);
+    text-wrap: pretty;
   }
+  @media (min-width: 640px) { .lede { font-size: 20px; } }
+  .meta { margin: 24px 0 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .meta .pill { font-family: var(--mono); font-size: 12px; }
 
-  p { margin: 0 0 12px; color: var(--ink-2); }
-  .muted { color: var(--muted); font-size: 13.5px; }
-  strong { color: var(--ink); font-weight: 600; }
+  /* ---- Notice and route ------------------------------------------------ */
 
-  ul, ol { margin: 10px 0; padding-left: 20px; color: var(--ink-2); }
-  li { margin-bottom: 6px; }
-  li::marker { color: var(--muted); }
-
-  /* ---- Code ------------------------------------------------------- */
-
-  code, .mono {
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 12.5px;
-    letter-spacing: -0.01em;
-  }
-  p code, li code, td code, .muted code {
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    padding: 1px 5px;
-    color: var(--ink);
-    white-space: nowrap;
-  }
-  pre {
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-inner);
-    padding: 13px 14px;
-    overflow-x: auto;
-    font-size: 12.5px;
-    line-height: 1.7;
-    margin: 12px 0;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  .notice {
+    margin: 64px 0 0;
+    border: 1px solid var(--sky-line);
+    background: var(--sky-tint);
+    border-radius: 16px;
+    padding: 16px 24px;
+    font-size: 14px;
     color: var(--ink-2);
+    text-wrap: pretty;
   }
 
-  /* ---- Copyable rows ---------------------------------------------- */
+  /* The route at a glance, and how far you have got. */
+  .route { padding: 48px 0 32px; }
+  .progress { margin: 0 0 16px; font-size: 14px; color: var(--muted); }
+  .progress strong { color: var(--ink); font-weight: 600; }
+  .tiles {
+    list-style: none; margin: 0; padding: 0;
+    display: grid; gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (min-width: 640px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .tile {
+    position: relative;
+    display: flex; flex-direction: column; gap: 4px;
+    height: 100%;
+    border: 1px solid; border-radius: 12px;
+    padding: 12px;
+    text-decoration: none;
+    transition: transform 500ms var(--ease);
+  }
+  @media (hover: hover) and (pointer: fine) { .tile:hover { transform: translateY(-2px); } }
+  .tile-n { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tile-t { font-size: 14px; font-weight: 500; color: var(--ink); text-wrap: balance; }
+  .tile-check {
+    position: absolute; top: 12px; right: 12px;
+    width: 16px; height: 16px;
+    opacity: 0; transform: scale(0.5);
+    transition: opacity 300ms var(--ease), transform 300ms var(--ease);
+  }
+  .tile.is-done .tile-check { opacity: 1; transform: scale(1); }
 
-  .copyrow {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .tone-ember { background: var(--ember-tint); border-color: var(--ember-line); color: var(--ember-ink); }
+  .tone-rose { background: var(--rose-tint); border-color: var(--rose-line); color: var(--rose-ink); }
+  .tone-lavender { background: var(--lavender-tint); border-color: var(--lavender-line); color: var(--lavender-ink); }
+  .tone-sky { background: var(--sky-tint); border-color: var(--sky-line); color: var(--sky-ink); }
+
+  /* ---- Steps ---------------------------------------------------------- */
+
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .step {
+    display: grid;
+    gap: 24px;
+    border-top: 1px solid var(--line);
+    padding: 64px 0;
+    scroll-margin-top: 32px;
+  }
+  @media (min-width: 1024px) { .step { grid-template-columns: 12rem minmax(0, 1fr); gap: 48px; } }
+  .step-num {
+    font-size: 96px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--step-ink) 45%, transparent);
+  }
+  @media (min-width: 1024px) {
+    .step-num { font-size: 128px; position: sticky; top: 32px; align-self: start; }
+  }
+  /* The number fills in, in its step's colour, as the step scrolls in. */
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .step-num {
+        animation: lit linear both;
+        animation-timeline: view();
+        animation-range: entry 40% cover 45%;
+      }
+    }
+  }
+  @keyframes lit {
+    from { color: color-mix(in srgb, var(--step-ink) 14%, transparent); }
+    to { color: var(--step-ink); }
+  }
+
+  .step-body { min-width: 0; max-width: 44rem; }
+  .step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .tag { border: 1px solid; border-radius: 999px; padding: 4px 12px; font-size: 12px; background: transparent; }
+  h2 {
+    margin: 12px 0 24px;
+    font-size: 30px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  @media (min-width: 640px) { h2 { font-size: 36px; } }
+  h3 { margin: 32px 0 8px; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .step-body p { margin: 0 0 16px; color: var(--ink-2); text-wrap: pretty; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .step-body p.muted { color: var(--muted); }
+  strong { color: var(--ink); font-weight: 600; }
+  .step-body ul { margin: 16px 0; padding-left: 20px; color: var(--ink-2); }
+  .step-body li { margin-bottom: 8px; }
+  .step-body li::marker { color: var(--step-ink); }
+
+  /* "Mark as done": the page remembers, in this browser, per domain. */
+  button.done {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 4px 12px 4px 8px;
+    font: 500 12px/1.4 var(--sans);
+    cursor: pointer;
+    transition: color 300ms var(--ease), border-color 300ms var(--ease), transform 140ms var(--ease);
+    -webkit-tap-highlight-color: transparent;
+  }
+  button.done:active { transform: scale(0.97); }
+  button.done:focus-visible, button.copy:focus-visible, summary:focus-visible, .tile:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .done-box {
+    width: 16px; height: 16px; border-radius: 999px;
+    border: 1.5px solid currentColor;
+    display: grid; place-items: center;
+    transition: background-color 300ms var(--ease), border-color 300ms var(--ease);
+  }
+  .done-box svg { width: 10px; height: 10px; opacity: 0; transition: opacity 200ms var(--ease); }
+  .done-lbl-on { display: none; }
+  button.done[aria-pressed="true"] { color: var(--ok); border-color: var(--ok); }
+  button.done[aria-pressed="true"] .done-box { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+  button.done[aria-pressed="true"] .done-box svg { opacity: 1; }
+  button.done[aria-pressed="true"] .done-lbl-off { display: none; }
+  button.done[aria-pressed="true"] .done-lbl-on { display: inline; }
+  @media (hover: hover) and (pointer: fine) {
+    button.done:hover { color: var(--ink); border-color: var(--ink); }
+    button.done[aria-pressed="true"]:hover { color: var(--ok); border-color: var(--ok); }
+  }
+
+  /* ---- Code and copyable values ---------------------------------------- */
+
+  code, .mono { font-family: var(--mono); font-size: 13px; }
+  p code, li code, td code, .muted code, h3 code {
     background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-inner);
-    padding: 7px 7px 7px 11px;
-    margin: 8px 0;
-  }
-  .copyrow > code, .copyrow > .mono {
-    flex: 1 1 auto;
-    min-width: 0;
-    background: none;
-    border: 0;
-    padding: 0;
+    border-radius: 4px;
+    padding: 2px 5px;
     color: var(--ink);
     overflow-wrap: anywhere;
-    white-space: normal;
   }
-
-  /* The only control on the page, so it carries all of its weight. */
+  pre {
+    margin: 16px 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font: 13px/1.7 var(--mono);
+    color: var(--ink-2);
+  }
+  .copyrow {
+    display: flex; align-items: center; gap: 8px;
+    margin: 8px 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 8px 8px 8px 12px;
+  }
+  .copyrow > code, .copyrow > .mono {
+    flex: 1 1 auto; min-width: 0;
+    background: none; padding: 0;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
   button.copy {
     flex: 0 0 auto;
     position: relative;
     border: 1px solid var(--line-strong);
-    background: var(--surface);
+    background: var(--bg);
     color: var(--ink-2);
-    border-radius: 6px;
-    padding: 5px 11px;
-    font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font: 500 12px/1.4 var(--sans);
     cursor: pointer;
-    /* Name the properties. "all" would animate layout too and is a
-       standing invitation to jank. 140ms: press feedback belongs under
-       160ms or it stops reading as a response to the click. */
-    transition:
-      transform 140ms var(--ease-out),
-      border-color 140ms var(--ease-out),
-      color 140ms var(--ease-out),
-      background-color 140ms var(--ease-out);
+    transition: transform 140ms var(--ease), border-color 140ms var(--ease), color 140ms var(--ease);
     -webkit-tap-highlight-color: transparent;
   }
-  /* Gated: a touch device fires hover on tap, so an ungated hover state
-     sticks after the finger lifts. */
-  @media (hover: hover) and (pointer: fine) {
-    button.copy:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--surface);
-    }
-  }
+  @media (hover: hover) and (pointer: fine) { button.copy:hover { border-color: var(--ink); color: var(--ink); } }
   button.copy:active { transform: scale(0.96); }
-  button.copy:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-  button.copy.ok {
-    border-color: var(--ok);
-    color: var(--ok);
-  }
+  button.copy.ok { border-color: var(--ok); color: var(--ok); }
+  /* Both labels are in the DOM and cross-fade, so the button keeps its width. */
+  button.copy .lbl { display: block; transition: opacity 140ms var(--ease), transform 140ms var(--ease), filter 140ms var(--ease); }
+  button.copy .lbl-done { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(0.25); filter: blur(4px); }
+  button.copy.ok .lbl-idle { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+  button.copy.ok .lbl-done { opacity: 1; transform: scale(1); filter: blur(0); }
 
-  /* Both labels live in the DOM and cross-fade, so the swap has an exit as
-     well as an enter and the button never changes width mid-press. */
-  button.copy .lbl {
-    display: block;
-    transition:
-      opacity 140ms var(--ease-out),
-      transform 140ms var(--ease-out),
-      filter 140ms var(--ease-out);
-  }
-  button.copy .lbl-done {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    opacity: 0;
-    /* Not scale(0): nothing in the world appears out of nothing. */
-    transform: scale(0.25);
-    filter: blur(4px);
-  }
-  button.copy.ok .lbl-idle {
-    opacity: 0;
-    transform: scale(0.25);
-    filter: blur(4px);
-  }
-  button.copy.ok .lbl-done {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0px);
-  }
+  /* ---- Field lists and tables ------------------------------------------- */
 
-  /* ---- Field lists ------------------------------------------------- */
-
-  .fields {
-    margin: 14px 0;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-inner);
-    overflow: hidden;
-    background: var(--surface);
-  }
-  .field {
-    display: flex;
-    gap: 14px;
-    padding: 12px 13px;
-    border-bottom: 1px solid var(--line);
-    align-items: flex-start;
-  }
+  .fields { margin: 16px 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .field { display: flex; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); align-items: flex-start; }
   .field:last-child { border-bottom: 0; }
-  .fname {
-    flex: 0 0 156px;
-    font-size: 11.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.045em;
-    color: var(--muted);
-    font-weight: 650;
-    padding-top: 7px;
-  }
+  .fname { flex: 0 0 9.5rem; padding-top: 10px; font-size: 13px; font-weight: 600; color: var(--ink); }
   .fval { flex: 1 1 auto; min-width: 0; }
   .fval .copyrow:first-child { margin-top: 0; }
   .fval > .muted:last-child { margin-bottom: 0; }
 
-  /* ---- Tables ------------------------------------------------------ */
-
   table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    margin: 14px 0;
+    border-collapse: separate; border-spacing: 0;
+    margin: 16px 0;
     font-size: 14px;
     border: 1px solid var(--line);
-    border-radius: var(--radius-inner);
+    border-radius: 16px;
     overflow: hidden;
+    background: var(--surface);
   }
-  th, td {
-    text-align: left;
-    padding: 11px 13px;
-    border-bottom: 1px solid var(--line);
-    vertical-align: top;
-  }
-  th {
-    font-size: 11.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.045em;
-    color: var(--muted);
-    font-weight: 650;
-    background: var(--surface-2);
-  }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .records td:first-child, .records td:nth-child(2) { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+  td:first-child { font-weight: 500; color: var(--ink); }
   tr:last-child td { border-bottom: 0; }
-  td.val { width: 100%; }
-  td .copyrow { margin: 0; }
-  td .muted { margin-top: 5px; display: block; }
+  td.val { width: 100%; font-family: var(--sans); }
+  td .copyrow { margin: 0; background: var(--bg); }
+  td .muted { margin-top: 6px; display: block; }
 
-  /* ---- Callout ----------------------------------------------------- */
+  /* ---- Callouts and disclosure ---------------------------------------- */
 
   .note {
-    background: var(--warn-bg);
-    border: 1px solid var(--warn-line);
-    color: var(--warn-ink);
-    border-radius: var(--radius-inner);
-    padding: 12px 14px;
-    font-size: 13.5px;
-    line-height: 1.6;
-    margin: 14px 0;
+    margin: 16px 0;
+    background: var(--ember-tint);
+    border: 1px solid var(--ember-line);
+    border-radius: 16px;
+    padding: 16px 20px;
+    font-size: 14px;
+    color: var(--ink-2);
+    text-wrap: pretty;
   }
-  .note strong { color: inherit; font-weight: 650; }
-  .note code { background: oklch(0 0 0 / 0.05); border-color: oklch(0 0 0 / 0.08); color: inherit; }
-  @media (prefers-color-scheme: dark) {
-    .note code { background: oklch(1 0 0 / 0.07); border-color: oklch(1 0 0 / 0.1); }
-  }
+  .note strong { color: var(--ember-ink); }
 
-  /* ---- Disclosure -------------------------------------------------- */
-
-  details { margin: 14px 0; }
+  details { margin: 16px 0; }
   summary {
     cursor: pointer;
-    font-size: 13.5px;
-    font-weight: 560;
-    color: var(--ink-2);
-    padding: 11px 13px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-inner);
-    background: var(--surface-2);
     list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    transition: border-color 140ms var(--ease-out), color 140ms var(--ease-out);
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+    font-weight: 500;
+    color: var(--ink);
+    transition: border-color 300ms var(--ease);
     -webkit-tap-highlight-color: transparent;
   }
   summary::-webkit-details-marker { display: none; }
-  /* The chevron is the state cue, so motion is never the only signal. */
   summary::before {
     content: "";
+    flex: 0 0 auto;
     width: 7px; height: 7px;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    transform: rotate(-45deg) translate(-1px, -1px);
-    opacity: 0.6;
-    transition: transform 160ms var(--ease-out);
+    border-right: 1.5px solid var(--step-ink);
+    border-bottom: 1.5px solid var(--step-ink);
+    transform: rotate(-45deg);
+    transition: transform 300ms var(--ease);
   }
-  details[open] summary::before { transform: rotate(45deg) translate(-2px, -2px); }
-  @media (hover: hover) and (pointer: fine) {
-    summary:hover { border-color: var(--line-strong); color: var(--ink); }
-  }
-  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  details[open] summary { margin-bottom: 14px; }
-  details > *:not(summary) { padding: 0 2px; }
+  details[open] summary::before { transform: rotate(45deg); }
+  @media (hover: hover) and (pointer: fine) { summary:hover { border-color: var(--line-strong); } }
+  details[open] summary { margin-bottom: 24px; }
 
-  a { color: var(--accent); text-underline-offset: 2px; }
+  footer { border-top: 1px solid var(--line); padding: 24px 0 48px; font-size: 14px; color: var(--muted); }
 
-  footer {
-    color: var(--muted);
-    font-size: 13px;
-    text-align: center;
-    margin-top: 32px;
-    padding-bottom: 8px;
-  }
+  /* ---- Motion ----------------------------------------------------------- */
 
-  /* ---- Entrance ----------------------------------------------------
-     Staged and seen once, which is the case where sequence is worth its
-     cost: the cards arrive in reading order rather than all at once.
-     Short delays -- anything longer reads as the page being slow. */
-  .step, header {
-    opacity: 0;
-    transform: translateY(6px);
-    animation: rise 420ms var(--ease-out) forwards;
+  @media (prefers-reduced-motion: no-preference) {
+    .scene-img { animation: drift 36s ease-in-out infinite alternate; }
+    .scene-copy > * { animation: rise 1.1s var(--ease) both; }
+    .scene-copy > :nth-child(2) { animation-delay: 80ms; }
+    .scene-copy > :nth-child(3) { animation-delay: 160ms; }
+    .scene-copy > :nth-child(4) { animation-delay: 240ms; }
+    .js .reveal { opacity: 0; transform: translateY(48px); filter: blur(10px); transition: opacity 900ms var(--ease), transform 900ms var(--ease), filter 900ms var(--ease); }
+    .js .reveal.in { opacity: 1; transform: none; filter: none; }
   }
-  header { animation-delay: 0ms; }
-  .step:nth-of-type(1) { animation-delay: 45ms; }
-  .step:nth-of-type(2) { animation-delay: 85ms; }
-  .step:nth-of-type(3) { animation-delay: 120ms; }
-  .step:nth-of-type(4) { animation-delay: 150ms; }
-  .step:nth-of-type(n+5) { animation-delay: 175ms; }
-  @keyframes rise {
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes drift { from { transform: scale(1.02); } to { transform: scale(1.08); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(24px); filter: blur(8px); } }
 
-  /* Reduced motion means gentler, not none: the fade stays because it
-     aids comprehension, the movement goes. */
-  @media (prefers-reduced-motion: reduce) {
-    .step, header {
-      transform: none;
-      animation: fade 200ms ease forwards;
-    }
-    @keyframes fade { to { opacity: 1; } }
-    button.copy:active { transform: none; }
-    button.copy .lbl, summary::before { transition-duration: 1ms; }
-  }
-
-  /* ---- Narrow ------------------------------------------------------ */
+  /* ---- Narrow ----------------------------------------------------------- */
 
   @media (max-width: 600px) {
-    body { padding: 0 14px 72px; }
-    header { padding: 36px 0 22px; }
-    h1 { font-size: 25px; }
-    .step { padding-top: 18px; }
-    .field { flex-direction: column; gap: 5px; }
+    .scene { min-height: 0; padding: 80px 16px 128px; }
+    .step { padding: 48px 0; }
+    .field { flex-direction: column; gap: 6px; }
     .fname { flex: none; padding-top: 0; }
     table, thead, tbody, th, td, tr { display: block; }
     thead { display: none; }
-    td { border-bottom: 0; padding: 4px 13px; }
-    tr { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    td { border-bottom: 0; padding: 4px 16px; }
+    tr { border-bottom: 1px solid var(--line); padding: 12px 0; }
     tr:last-child { border-bottom: 0; }
     td::before {
       content: attr(data-label);
       display: block;
-      font-size: 11px;
-      text-transform: uppercase;
+      margin-bottom: 4px;
+      font: 500 12px/1.4 var(--sans);
       color: var(--muted);
-      letter-spacing: 0.045em;
-      font-weight: 650;
-      margin-bottom: 3px;
     }
   }
 </style>
 </head>
-<body>
-<div class="wrap">
+<body data-domain="$DOMAIN">
 
-<header>
-  <h1>UNA Email setup</h1>
-  <div class="sub">
-    <span>$DOMAIN</span><span class="dot"></span>
-    <span>server $SERVER_IP</span><span class="dot"></span>
-    <span>generated $(date "+%e %B %Y, %H:%M")</span>
-  </div>
-</header>
-
-<div class="note">
-  This page is served over plain HTTP from your server's IP, because none of it
-  works until the DNS below exists. Everything on it is public information you
-  are about to publish in DNS. Once your certificate is issued it is also at
-  <a href="https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup">https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup</a>.
+<div class="scene-frame">
+  <header class="scene">
+    <img class="scene-img" src="/dns-setup/setup.webp" alt="" width="1536" height="1024">
+    <div class="scene-scrim" aria-hidden="true"></div>
+    <div class="scene-copy">
+      <p class="pill">UNA setup guide</p>
+      <h1>Set up $DOMAIN</h1>
+      <p class="lede">Every record this server needs, ready to copy. Work down the steps and mark each one done as you go; this page remembers where you got to.</p>
+      <p class="meta"><span class="pill">server $SERVER_IP</span><span class="pill">generated $(date "+%e %B %Y, %H:%M")</span></p>
+    </div>
+  </header>
 </div>
 
-<section class="step" id="s0">
-  <h2><span class="num alert">0</span> Already using this domain elsewhere?</h2>
-  <p class="muted">If $DOMAIN is a brand-new domain with an empty DNS zone, skip
-     this and start at step 1.</p>
-  <details>
-  <summary>Read this if $DOMAIN already has a website or email somewhere else</summary>
-  <p>If $DOMAIN already has a website or a mailbox somewhere else (GoDaddy,
-     Squarespace, Wix, Google Workspace, Microsoft&nbsp;365), UNA runs alongside it.</p>
-  <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
-     record for $DOMAIN or www.$DOMAIN. Only $SMTP_SUBDOMAIN.$DOMAIN and
-     $WEB_SUBDOMAIN.$DOMAIN point at this server, and the certificate covers only those
-     two names. Your site keeps loading from wherever it is hosted now.</p>
-  <p>But three of the records in step 1 are <strong>single-value</strong> records. Adding
-     them next to what is already published does not work; it breaks both. Check
-     what exists first:</p>
-  <pre>$PRECHECK_COMMANDS</pre>
-  <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+<main class="wrap">
 
-  <h3>MX: delete the existing records first</h3>
-  <p>Mail for <strong>all of</strong> $DOMAIN moves to UNA. Leave your old provider's MX
-     records in place next to UNA's and inbound mail is split between two servers more or
-     less at random, and some of it will never reach your UNA inbox. Remove every
-     existing MX record on <code>@</code> before adding the one in step 1.</p>
-  <p>If you still need the messages in the old mailbox, export them <strong>before</strong>
-     you switch the MX. UNA is web-only and has no IMAP import.</p>
+<p class="notice">This page is served over plain HTTP from your server's IP, because none of it works until the DNS below exists. Everything on it is public information you are about to publish in DNS. Once your certificate is issued it is also at <a href="https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup">https://$WEB_SUBDOMAIN.$DOMAIN/dns-setup</a>.</p>
 
-  <h3>SPF: merge, never add a second record</h3>
-  <p>A domain may publish only <strong>one</strong> <code>v=spf1</code> record. Two of them
-     is a permanent error, and SPF then fails for <em>every</em> sender on your domain, the
-     old host included. If the count above came back as 1, edit that record instead of
-     adding UNA's. An existing GoDaddy record like this:</p>
-  <pre>v=spf1 include:secureserver.net -all</pre>
-  <p>becomes:</p>
-  <div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-  <p class="muted">Use whichever <code>include:</code> terms your own record already has.
-     Keep the <code>all</code> mechanism last, and leave it as <code>~all</code> while you
-     are testing.</p>
+<nav class="route" aria-label="Steps">
+  <p class="progress" id="progress" aria-live="polite">Eight steps, from an empty DNS zone to your first test message.</p>
+  <ol class="tiles">
+    <li><a class="tile tone-lavender" href="#s0" data-tile="s0"><span class="tile-n">00</span><span class="tile-t">Check first</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-rose" href="#s1" data-tile="s1"><span class="tile-n">01</span><span class="tile-t">DNS records</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-ember" href="#s2" data-tile="s2"><span class="tile-n">02</span><span class="tile-t">Reverse DNS</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-lavender" href="#s3" data-tile="s3"><span class="tile-n">03</span><span class="tile-t">Verify</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-sky" href="#s4" data-tile="s4"><span class="tile-n">04</span><span class="tile-t">Certificate</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-sky" href="#s5" data-tile="s5"><span class="tile-n">05</span><span class="tile-t">Renewal</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-rose" href="#s6" data-tile="s6"><span class="tile-n">06</span><span class="tile-t">DANE (optional)</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+    <li><a class="tile tone-lavender" href="#s7" data-tile="s7"><span class="tile-n">07</span><span class="tile-t">Sign in and test</span><svg class="tile-check" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></a></li>
+  </ol>
+</nav>
 
-  <h3>DMARC: one record only</h3>
-  <p>Same rule at <code>_dmarc</code>. If a DMARC record already exists, replace its value
-     with the one in step 1 rather than publishing a second TXT record.</p>
+<ol class="steps">
 
-  <h3>DKIM: safe to add</h3>
-  <p><code>una._domainkey</code> is scoped to the <code>una</code> selector, so it cannot
-     collide with another provider's DKIM key unless that provider also happens to use the
-     selector <code>una</code>.</p>
+<li class="step" id="s0" style="--step-ink: var(--lavender-ink)">
+  <div class="step-num" aria-hidden="true">00</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-lavender">From any computer</span>
+      <button class="done" type="button" data-step="s0" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 0: </span>Already using this domain elsewhere?</h2>
+    <p class="muted">If $DOMAIN is a brand-new domain with an empty DNS zone, skip
+       this and start at step 1.</p>
+    <details>
+    <summary>Read this if $DOMAIN already has a website or email somewhere else</summary>
+    <p>If $DOMAIN already has a website or a mailbox somewhere else (GoDaddy,
+       Squarespace, Wix, Google Workspace, Microsoft&nbsp;365), UNA runs alongside it.</p>
+    <p><strong>Your website is not affected.</strong> Nothing on this page changes the A
+       record for $DOMAIN or www.$DOMAIN. Only $SMTP_SUBDOMAIN.$DOMAIN and
+       $WEB_SUBDOMAIN.$DOMAIN point at this server, and the certificate covers only those
+       two names. Your site keeps loading from wherever it is hosted now.</p>
+    <p>But three of the records in step 1 are <strong>single-value</strong> records. Adding
+       them next to what is already published does not work; it breaks both. Check
+       what exists first:</p>
+    <pre>$PRECHECK_COMMANDS</pre>
+    <div class="copyrow"><span class="mono">copy all checks</span><button class="copy" data-copy="$PRECHECK_ONELINE"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
 
-  <h3>Where do the records go?</h3>
-  <p>&ldquo;Your registrar&rdquo; is shorthand. Records have to be added wherever your
-     <strong>nameservers</strong> point, which is not always the registrar, since a domain
-     can be registered at GoDaddy while DNS is served by Cloudflare or a site builder. The
-     <code>dig NS</code> check above tells you which control panel to open.</p>
+    <h3>MX: delete the existing records first</h3>
+    <p>Mail for <strong>all of</strong> $DOMAIN moves to UNA. Leave your old provider's MX
+       records in place next to UNA's and inbound mail is split between two servers more or
+       less at random, and some of it will never reach your UNA inbox. Remove every
+       existing MX record on <code>@</code> before adding the one in step 1.</p>
+    <p>If you still need the messages in the old mailbox, export them <strong>before</strong>
+       you switch the MX. UNA is web-only and has no IMAP import.</p>
 
-  <h3>If your DNS is on Cloudflare</h3>
-  <p>Set <code>$SMTP_SUBDOMAIN</code> and <code>$WEB_SUBDOMAIN</code> to
-     <strong>DNS only</strong> (grey cloud, not orange). A proxied record breaks SMTP on
-     port 25 completely, and serves visitors Cloudflare's certificate instead of the one
-     <code>./renew-ssl.sh</code> issues.</p>
-  </details>
-</section>
+    <h3>SPF: merge, never add a second record</h3>
+    <p>A domain may publish only <strong>one</strong> <code>v=spf1</code> record. Two of them
+       is a permanent error, and SPF then fails for <em>every</em> sender on your domain, the
+       old host included. If the count above came back as 1, edit that record instead of
+       adding UNA's. An existing GoDaddy record like this:</p>
+    <pre>v=spf1 include:secureserver.net -all</pre>
+    <p>becomes:</p>
+    <div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx include:secureserver.net ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+    <p class="muted">Use whichever <code>include:</code> terms your own record already has.
+       Keep the <code>all</code> mechanism last, and leave it as <code>~all</code> while you
+       are testing.</p>
 
-<section class="step" id="s1">
-  <h2><span class="num">1</span> DNS records</h2>
-  <p class="muted">Add these wherever your nameservers point, usually your registrar
-     (GoDaddy, Namecheap, Cloudflare&hellip;), but not always.</p>
-  <table>
-    <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
-    <tbody>
-      <tr>
-        <td data-label="Type">MX</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Priority 10. Delete any existing MX records on @ first, because two providers side by side split your inbound mail.</div></td>
-      </tr>
+    <h3>DMARC: one record only</h3>
+    <p>Same rule at <code>_dmarc</code>. If a DMARC record already exists, replace its value
+       with the one in step 1 rather than publishing a second TXT record.</p>
+
+    <h3>DKIM: safe to add</h3>
+    <p><code>una._domainkey</code> is scoped to the <code>una</code> selector, so it cannot
+       collide with another provider's DKIM key unless that provider also happens to use the
+       selector <code>una</code>.</p>
+
+    <h3>Where do the records go?</h3>
+    <p>&ldquo;Your registrar&rdquo; is shorthand. Records have to be added wherever your
+       <strong>nameservers</strong> point, which is not always the registrar, since a domain
+       can be registered at GoDaddy while DNS is served by Cloudflare or a site builder. The
+       <code>dig NS</code> check above tells you which control panel to open.</p>
+
+    <h3>If your DNS is on Cloudflare</h3>
+    <p>Set <code>$SMTP_SUBDOMAIN</code> and <code>$WEB_SUBDOMAIN</code> to
+       <strong>DNS only</strong> (grey cloud, not orange). A proxied record breaks SMTP on
+       port 25 completely, and serves visitors Cloudflare's certificate instead of the one
+       <code>./renew-ssl.sh</code> issues.</p>
+    </details>
+  </div>
+</li>
+
+<li class="step" id="s1" style="--step-ink: var(--rose-ink)">
+  <div class="step-num" aria-hidden="true">01</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-rose">At your registrar</span>
+      <button class="done" type="button" data-step="s1" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 1: </span>DNS records</h2>
+    <p class="muted">Add these wherever your nameservers point, usually your registrar
+       (GoDaddy, Namecheap, Cloudflare&hellip;), but not always.</p>
+    <table class="records">
+      <thead><tr><th>Type</th><th>Host</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr>
+          <td data-label="Type">MX</td><td data-label="Host">@</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Priority 10. Delete any existing MX records on @ first, because two providers side by side split your inbound mail.</div></td>
+        </tr>
 $A_RECORD_ROWS
-      <tr>
-        <td data-label="Type">TXT</td><td data-label="Host">@</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain, so if you already have one, merge into it rather than adding this.</div></td>
-      </tr>
-      <tr>
-        <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DKIM</div></td>
-      </tr>
-      <tr>
-        <td data-label="Type">TXT</td><td data-label="Host">una._domainkey.$SMTP_SUBDOMAIN</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">The same value again. Bounce messages are sent from $SMTP_SUBDOMAIN.$DOMAIN and are signed with this key.</div></td>
-      </tr>
-      <tr>
-        <td data-label="Type">TXT</td><td data-label="Host">_dmarc</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DMARC. One record only; replace an existing _dmarc value rather than adding a second.</div></td>
-      </tr>
-    </tbody>
-  </table>
-</section>
-
-<section class="step" id="s2">
-  <h2><span class="num">2</span> Reverse DNS (PTR)</h2>
-  <p>Set at your <strong>VPS provider</strong>, not your registrar. Without it most
-     large providers will treat your mail as suspect.</p>
-  <!-- Two values, so a table is the wrong shape for it: td.val is width:100%,
-       which collapsed the "Server IP" column to min-content and crushed it
-       against the PTR value. A stacked field list reads better here and at
-       phone width. -->
-  <div class="fields">
-    <div class="field">
-      <div class="fname">Server IP</div>
-      <div class="fval"><div class="copyrow"><code>$SERVER_IP</code><button class="copy" data-copy="$SERVER_IP"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
-    </div>
-    <div class="field">
-      <div class="fname">PTR value</div>
-      <div class="fval"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
-    </div>
+        <tr>
+          <td data-label="Type">TXT</td><td data-label="Host">@</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all</code><button class="copy" data-copy="v=spf1 a:$SMTP_SUBDOMAIN.$DOMAIN ip4:$SERVER_IP mx ~all"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">SPF. Only one v=spf1 record is allowed per domain, so if you already have one, merge into it rather than adding this.</div></td>
+        </tr>
+        <tr>
+          <td data-label="Type">TXT</td><td data-label="Host">una._domainkey</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DKIM</div></td>
+        </tr>
+        <tr>
+          <td data-label="Type">TXT</td><td data-label="Host">una._domainkey.$SMTP_SUBDOMAIN</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>$DKIM_RECORD</code><button class="copy" data-copy="$DKIM_RECORD"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">The same value again. Bounce messages are sent from $SMTP_SUBDOMAIN.$DOMAIN and are signed with this key.</div></td>
+        </tr>
+        <tr>
+          <td data-label="Type">TXT</td><td data-label="Host">_dmarc</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100</code><button class="copy" data-copy="v=DMARC1; p=none; adkim=s; aspf=s; rua=mailto:postmaster@$DOMAIN; ruf=mailto:postmaster@$DOMAIN; fo=1; pct=100"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">DMARC. One record only; replace an existing _dmarc value rather than adding a second.</div></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
-  <ul>
-    <li><strong>Vultr</strong>: Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
-    <li><strong>DigitalOcean</strong>: rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
-    <li><strong>Hetzner</strong>: Server &rarr; Networking &rarr; click the IP &rarr; Reverse DNS</li>
-    <li><strong>Linode/Akamai</strong>: Network &rarr; IP Addresses &rarr; Edit RDNS</li>
-    <li>Others: look for &ldquo;Reverse DNS&rdquo;, &ldquo;PTR&rdquo; or &ldquo;RDNS&rdquo;. Some require a support ticket.</li>
-  </ul>
-</section>
+</li>
 
-<section class="step" id="s3">
-  <h2><span class="num">3</span> Verify propagation</h2>
-  <p class="muted">Wait 5-30 minutes, then run these from any machine. Each
-     one is copyable on its own, so you can work through them and see which
-     record is not there yet.</p>
-  <div class="fields">
+<li class="step" id="s2" style="--step-ink: var(--ember-ink)">
+  <div class="step-num" aria-hidden="true">02</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-ember">At your VPS provider</span>
+      <button class="done" type="button" data-step="s2" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 2: </span>Reverse DNS (PTR)</h2>
+    <p>Set at your <strong>VPS provider</strong>, not your registrar. Without it most
+       large providers will treat your mail as suspect.</p>
+    <!-- Two values, so a stacked field list rather than a table. -->
+    <div class="fields">
+      <div class="field">
+        <div class="fname">Server IP</div>
+        <div class="fval"><div class="copyrow"><code>$SERVER_IP</code><button class="copy" data-copy="$SERVER_IP"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
+      </div>
+      <div class="field">
+        <div class="fname">PTR value</div>
+        <div class="fval"><div class="copyrow"><code>$SMTP_SUBDOMAIN.$DOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN.$DOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div></div>
+      </div>
+    </div>
+    <ul>
+      <li><strong>Vultr</strong>: Server Settings &rarr; IPv4 &rarr; Reverse DNS</li>
+      <li><strong>DigitalOcean</strong>: rename the Droplet to $SMTP_SUBDOMAIN.$DOMAIN; PTR follows the hostname</li>
+      <li><strong>Hetzner</strong>: Server &rarr; Networking &rarr; click the IP &rarr; Reverse DNS</li>
+      <li><strong>Linode/Akamai</strong>: Network &rarr; IP Addresses &rarr; Edit RDNS</li>
+      <li>Others: look for &ldquo;Reverse DNS&rdquo;, &ldquo;PTR&rdquo; or &ldquo;RDNS&rdquo;. Some require a support ticket.</li>
+    </ul>
+  </div>
+</li>
+
+<li class="step" id="s3" style="--step-ink: var(--lavender-ink)">
+  <div class="step-num" aria-hidden="true">03</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-lavender">From any computer</span>
+      <button class="done" type="button" data-step="s3" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 3: </span>Verify propagation</h2>
+    <p class="muted">Wait 5-30 minutes, then run these from any machine. Each
+       one is copyable on its own, so you can work through them and see which
+       record is not there yet.</p>
+    <div class="fields">
 $VERIFY_ROWS
+    </div>
+    <div class="copyrow" style="margin-top:16px"><span class="mono">Run them all at once</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE"><span class="lbl lbl-idle">copy all</span><span class="lbl lbl-done">copied</span></button></div>
   </div>
-  <div class="copyrow" style="margin-top:14px"><span class="mono">Run them all at once</span><button class="copy" data-copy="$VERIFY_COMMANDS_ONELINE"><span class="lbl lbl-idle">copy all</span><span class="lbl lbl-done">copied</span></button></div>
-</section>
+</li>
 
-<section class="step" id="s4">
-  <h2><span class="num">4</span> SSL certificate</h2>
-  <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
-  <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-  <div class="note" style="margin-top:12px">
-    <strong>Save the hash it prints.</strong> When the script finishes it outputs
-    a 64-character hash, the fingerprint of your certificate's public key. You
-    need it in step 6. Copy it somewhere now; you can always get it back
-    with the command in step 6, but it is easier to keep than to re-derive.
+<li class="step" id="s4" style="--step-ink: var(--sky-ink)">
+  <div class="step-num" aria-hidden="true">04</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-sky">On the server</span>
+      <button class="done" type="button" data-step="s4" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 4: </span>SSL certificate</h2>
+    <p>Once the A record$A_PLURAL resolve$A_VERB, run this on the server:</p>
+    <div class="copyrow"><code>cd ~/una.email-install &amp;&amp; ./renew-ssl.sh</code><button class="copy" data-copy="cd ~/una.email-install &amp;&amp; ./renew-ssl.sh"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+    <div class="note">
+      <strong>Save the hash it prints.</strong> When the script finishes it outputs
+      a 64-character hash, the fingerprint of your certificate's public key. You
+      need it in step 6. Copy it somewhere now; you can always get it back
+      with the command in step 6, but it is easier to keep than to re-derive.
+    </div>
+    <p class="muted">One certificate is issued covering
+       <strong>$WEB_SUBDOMAIN.$DOMAIN</strong> and <strong>$SMTP_SUBDOMAIN.$DOMAIN</strong>.
+       Both names are validated over port 80, and the same certificate is used by
+       Nginx on 443 and by Postfix for STARTTLS on 25. Let's Encrypt allows 5
+       certificates per domain per week.</p>
   </div>
-  <p class="muted" style="margin-top:12px">One certificate is issued covering
-     <strong>$WEB_SUBDOMAIN.$DOMAIN</strong> and <strong>$SMTP_SUBDOMAIN.$DOMAIN</strong>.
-     Both names are validated over port 80, and the same certificate is used by
-     Nginx on 443 and by Postfix for STARTTLS on 25. Let's Encrypt allows 5
-     certificates per domain per week.</p>
-</section>
+</li>
 
-<section class="step" id="s5">
-  <h2><span class="num">5</span> Keep the certificate renewing</h2>
-  <p>Your certificate lasts 90 days and <strong>nothing renews it
-     automatically</strong>, because the installer does not touch your crontab.
-     Three commands, on the server:</p>
+<li class="step" id="s5" style="--step-ink: var(--sky-ink)">
+  <div class="step-num" aria-hidden="true">05</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-sky">On the server</span>
+      <button class="done" type="button" data-step="s5" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 5: </span>Keep the certificate renewing</h2>
+    <p>Your certificate lasts 90 days and <strong>nothing renews it
+       automatically</strong>, because the installer does not touch your crontab.
+       Three commands, on the server:</p>
 
-  <div class="fields">
-    <div class="field">
-      <div class="fname">1. Is cron running?</div>
-      <div class="fval">
-        <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-        <div class="muted" style="margin-top:4px">Prints <code>active</code> if it is. On a
-          minimal CentOS/AlmaLinux image it often is not installed, so install it if the check comes back empty:</div>
-        <div class="copyrow" style="margin-top:6px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-        <div class="muted" style="margin-top:4px">On Debian/Ubuntu the package and the service
-          are both called <code>cron</code>.</div>
+    <div class="fields">
+      <div class="field">
+        <div class="fname">1. Is cron running?</div>
+        <div class="fval">
+          <div class="copyrow"><code>systemctl is-active crond</code><button class="copy" data-copy="systemctl is-active crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+          <div class="muted" style="margin-top:4px">Prints <code>active</code> if it is. On a
+            minimal CentOS/AlmaLinux image it often is not installed, so install it if the check comes back empty:</div>
+          <div class="copyrow" style="margin-top:8px"><code>sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond</code><button class="copy" data-copy="sudo dnf install -y cronie &amp;&amp; sudo systemctl enable --now crond"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+          <div class="muted" style="margin-top:4px">On Debian/Ubuntu the package and the service
+            are both called <code>cron</code>.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="fname">2. Open the crontab</div>
+        <div class="fval">
+          <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+          <div class="muted" style="margin-top:4px">Opens an editor. If it asks which one, pick nano.</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="fname">3. Add this line</div>
+        <div class="fval">
+          <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+          <div class="muted" style="margin-top:4px">Paste it on its own line, then save and exit.
+            Daily is right even for a 90-day certificate: <code>--cron</code> is the quiet mode and
+            does nothing until fewer than 30 days remain.</div>
+        </div>
       </div>
     </div>
 
-    <div class="field">
-      <div class="fname">2. Open the crontab</div>
-      <div class="fval">
-        <div class="copyrow"><code>sudo crontab -e</code><button class="copy" data-copy="sudo crontab -e"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-        <div class="muted" style="margin-top:4px">Opens an editor. If it asks which one, pick nano.</div>
-      </div>
+    <p class="muted">Check it took, and test the entry without waiting for 2:30am
+       and it should exit 0 and do nothing:</p>
+    <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+    <div class="copyrow"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+  </div>
+</li>
+
+<li class="step" id="s6" style="--step-ink: var(--rose-ink)">
+  <div class="step-num" aria-hidden="true">06</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-rose">At your registrar</span>
+      <button class="done" type="button" data-step="s6" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 6: </span>DANE / TLSA (optional)</h2>
+    <p>DANE publishes your certificate's fingerprint in DNS so sending servers can
+       verify it without trusting a certificate authority. It needs DNSSEC on your
+       domain, and without it TLSA records are ignored.</p>
+    <p><code>./renew-ssl.sh</code> prints the hash when it finishes. It looks like
+       <code>3 1 1 &lt;64 hex characters&gt;</code>.</p>
+
+    <div class="note">
+      <strong>Most registrars ask for the parts separately</strong>, not as one
+      string. The <code>3 1 1</code> is three separate settings, and the hash is
+      the value on its own, so do not paste <code>3 1 1 &lt;hash&gt;</code>
+      into the value box.
     </div>
 
-    <div class="field">
-      <div class="fname">3. Add this line</div>
-      <div class="fval">
-        <div class="copyrow"><code>30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron &gt; /dev/null 2&gt;&amp;1</code><button class="copy" data-copy="30 2 * * * $INSTALL_PATH/renew-ssl.sh --cron > /dev/null 2>&amp;1"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-        <div class="muted" style="margin-top:4px">Paste it on its own line, then save and exit.
-          Daily is right even for a 90-day certificate: <code>--cron</code> is the quiet mode and
-          does nothing until fewer than 30 days remain.</div>
-      </div>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Field">Type</td><td data-label="Value" class="val"><code>TLSA</code></td></tr>
+        <tr>
+          <td data-label="Field">Port</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>25</code><button class="copy" data-copy="25"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Not 443. This protects SMTP, and forms often suggest 443.</div></td>
+        </tr>
+        <tr><td data-label="Field">Protocol</td><td data-label="Value" class="val"><code>_tcp</code></td></tr>
+        <tr>
+          <td data-label="Field">Name / Host</td>
+          <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Just the label. Port and Protocol build the <code>_25._tcp</code> part for you. If the form wants one long name instead, use <code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN</code>.</div></td>
+        </tr>
+        <tr><td data-label="Field">Certificate Usage</td><td data-label="Value" class="val"><code>3</code><div class="muted">DANE-EE: the certificate itself, no CA involved.</div></td></tr>
+        <tr><td data-label="Field">Selector</td><td data-label="Value" class="val"><code>1</code><div class="muted">Match the public key, not the whole certificate.</div></td></tr>
+        <tr><td data-label="Field">Matching Type</td><td data-label="Value" class="val"><code>1</code><div class="muted">SHA-256.</div></td></tr>
+        <tr>
+          <td data-label="Field">Value / Certificate Association Data</td>
+          <td data-label="Value" class="val"><code>the 64-character hash from renew-ssl.sh</code><div class="muted">The hash alone. No <code>3 1 1</code> in front of it.</div></td>
+        </tr>
+        <tr><td data-label="Field">TTL</td><td data-label="Value" class="val"><code>default</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <strong>Watch the field order.</strong> The wire format is Usage, Selector,
+      Matching Type, but many registrar forms list them as Usage, Matching
+      Type, Selector. Here all three are <code>3 1 1</code> so it makes no
+      difference, but do not fill them in top to bottom from the string out of
+      habit.
     </div>
+
+    <p>Some registrars take the whole record as one line instead. Then it is
+       the following, with your saved hash in place of &lt;hash&gt;:</p>
+    <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+
+    <p style="margin-top:16px">Check it once published:</p>
+    <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
+    <p class="muted" style="margin-top:16px">A space in the middle of the hash in
+       that output is only <code>dig</code> wrapping a long string, so the
+       record is fine. The hash is the certificate's public key and survives
+       renewals (<code>--reuse-key</code>), so you only replace it after a full
+       reinstall, which does generate a new key. Until you update this
+       record, senders that check DANE will refuse your mail.</p>
   </div>
+</li>
 
-  <p class="muted">Check it took, and test the entry without waiting for 2:30am
-     and it should exit 0 and do nothing:</p>
-  <div class="copyrow"><code>sudo crontab -l</code><button class="copy" data-copy="sudo crontab -l"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-  <div class="copyrow" style="margin-top:6px"><code>$INSTALL_PATH/renew-ssl.sh --cron; echo \$?</code><button class="copy" data-copy="$INSTALL_PATH/renew-ssl.sh --cron; echo \$?"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-</section>
-
-<section class="step" id="s6">
-  <h2><span class="num">6</span> DANE / TLSA (optional)</h2>
-  <p>DANE publishes your certificate's fingerprint in DNS so sending servers can
-     verify it without trusting a certificate authority. It needs DNSSEC on your
-     domain, and without it TLSA records are ignored.</p>
-  <p><code>./renew-ssl.sh</code> prints the hash when it finishes. It looks like
-     <code>3 1 1 &lt;64 hex characters&gt;</code>.</p>
-
-  <div class="note">
-    <strong>Most registrars ask for the parts separately</strong>, not as one
-    string. The <code>3 1 1</code> is three separate settings, and the hash is
-    the value on its own, so do not paste <code>3 1 1 &lt;hash&gt;</code>
-    into the value box.
+<li class="step" id="s7" style="--step-ink: var(--lavender-ink)">
+  <div class="step-num" aria-hidden="true">07</div>
+  <div class="step-body reveal">
+    <div class="step-head">
+      <span class="tag tone-lavender">In the browser</span>
+      <button class="done" type="button" data-step="s7" aria-pressed="false"><span class="done-box"><svg viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69 218.34 66.34a8 8 0 0 1 11.32 11.32Z"/></svg></span><span class="done-lbl-off">Mark as done</span><span class="done-lbl-on">Done</span></button>
+    </div>
+    <h2><span class="sr">Step 7: </span>Sign in and test</h2>
+    <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>.
+       The first screen creates your <em>sign-in</em>, the admin login for
+       this install, not a mailbox, and nothing is delivered to it. Once you are
+       in, create your first mailbox under Settings &rarr; Accounts. Mail sent to
+       an address with no mailbox is refused.</p>
+    <p>Then send a message to <a href="https://mail-tester.com/">mail-tester.com</a>
+       with a few sentences of ordinary text rather than one word, then check the
+       score. SPF, DKIM, DMARC, PTR and blacklists should all be green. Below 8,
+       the report names the record that is wrong. You get 3 free tests a day.</p>
   </div>
+</li>
 
-  <table>
-    <thead><tr><th>Field</th><th>Value</th></tr></thead>
-    <tbody>
-      <tr><td data-label="Field">Type</td><td data-label="Value"><code>TLSA</code></td></tr>
-      <tr>
-        <td data-label="Field">Port</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>25</code><button class="copy" data-copy="25"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Not 443. This protects SMTP, and forms often suggest 443.</div></td>
-      </tr>
-      <tr><td data-label="Field">Protocol</td><td data-label="Value"><code>_tcp</code></td></tr>
-      <tr>
-        <td data-label="Field">Name / Host</td>
-        <td data-label="Value" class="val"><div class="copyrow"><code>$SMTP_SUBDOMAIN</code><button class="copy" data-copy="$SMTP_SUBDOMAIN"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div><div class="muted">Just the label. Port and Protocol build the <code>_25._tcp</code> part for you. If the form wants one long name instead, use <code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN</code>.</div></td>
-      </tr>
-      <tr><td data-label="Field">Certificate Usage</td><td data-label="Value"><code>3</code><div class="muted">DANE-EE: the certificate itself, no CA involved.</div></td></tr>
-      <tr><td data-label="Field">Selector</td><td data-label="Value"><code>1</code><div class="muted">Match the public key, not the whole certificate.</div></td></tr>
-      <tr><td data-label="Field">Matching Type</td><td data-label="Value"><code>1</code><div class="muted">SHA-256.</div></td></tr>
-      <tr>
-        <td data-label="Field">Value / Certificate Association Data</td>
-        <td data-label="Value"><code>the 64-character hash from renew-ssl.sh</code><div class="muted">The hash alone. No <code>3 1 1</code> in front of it.</div></td>
-      </tr>
-      <tr><td data-label="Field">TTL</td><td data-label="Value"><code>default</code></td></tr>
-    </tbody>
-  </table>
-
-  <div class="note">
-    <strong>Watch the field order.</strong> The wire format is Usage, Selector,
-    Matching Type, but many registrar forms list them as Usage, Matching
-    Type, Selector. Here all three are <code>3 1 1</code> so it makes no
-    difference, but do not fill them in top to bottom from the string out of
-    habit.
-  </div>
-
-  <p>Some registrars take the whole record as one line instead. Then it is
-     the following, with your saved hash in place of &lt;hash&gt;:</p>
-  <div class="copyrow"><code>_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;</code><button class="copy" data-copy="_25._tcp.$SMTP_SUBDOMAIN.$DOMAIN TLSA 3 1 1 &lt;hash&gt;"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-
-  <p style="margin-top:12px">Check it once published:</p>
-  <div class="copyrow"><code>dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short</code><button class="copy" data-copy="dig TLSA _25._tcp.$SMTP_SUBDOMAIN.$DOMAIN +short"><span class="lbl lbl-idle">copy</span><span class="lbl lbl-done">copied</span></button></div>
-  <p class="muted" style="margin-top:12px">A space in the middle of the hash in
-     that output is only <code>dig</code> wrapping a long string, so the
-     record is fine. The hash is the certificate's public key and survives
-     renewals (<code>--reuse-key</code>), so you only replace it after a full
-     reinstall, which does generate a new key. Until you update this
-     record, senders that check DANE will refuse your mail.</p>
-</section>
-
-<section class="step" id="s7">
-  <h2><span class="num">7</span> Sign in and test</h2>
-  <p>Open <a href="https://$WEB_SUBDOMAIN.$DOMAIN">https://$WEB_SUBDOMAIN.$DOMAIN</a>.
-     The first screen creates your <em>sign-in</em>, the admin login for
-     this install, not a mailbox, and nothing is delivered to it. Once you are
-     in, create your first mailbox under Settings &rarr; Accounts. Mail sent to
-     an address with no mailbox is refused.</p>
-  <p>Then send a message to <a href="https://mail-tester.com/">mail-tester.com</a>
-     with a few sentences of ordinary text rather than one word, then check the
-     score. SPF, DKIM, DMARC, PTR and blacklists should all be green. Below 8,
-     the report names the record that is wrong. You get 3 free tests a day.</p>
-</section>
+</ol>
 
 <footer>
   Generated by install.sh &middot; also on the server as
   <span class="mono">YOUR_SETUP.md</span>
 </footer>
 
-</div>
+</main>
+
 <script>
-// No template literals and no backticks anywhere: this file is written by a
-// bash heredoc that would treat them as command substitution.
+// No template literals, no backticks and no dollar signs anywhere: this file
+// is written by a bash heredoc that would treat them as its own.
 (function () {
   // navigator.clipboard is undefined on plain HTTP, which is exactly how this
   // page is served before a certificate exists. The textarea fallback is the
@@ -1957,18 +2018,16 @@ $VERIFY_ROWS
   document.querySelectorAll('button.copy').forEach(function (btn) {
     var done = btn.querySelector('.lbl-done');
     var timer = null;
-
     btn.addEventListener('click', function () {
       copyText(btn.getAttribute('data-copy')).then(function () {
-        // A class, not textContent. Both labels are already in the DOM, so
-        // the button keeps its width through the swap and the transition has
-        // an exit as well as an enter -- rewriting the text would snap.
+        // A class, not textContent: both labels are in the DOM, so the button
+        // keeps its width through the swap.
         if (done) { done.textContent = 'copied'; }
         btn.classList.add('ok');
         clearTimeout(timer);
         timer = setTimeout(function () { btn.classList.remove('ok'); }, 1400);
       }, function () {
-        // Both fallbacks refused. Say what to do instead of failing silently.
+        // Both ways of copying refused. Say what to do instead of failing silently.
         if (done) { done.textContent = 'select it'; }
         btn.classList.add('ok');
         clearTimeout(timer);
@@ -1977,13 +2036,62 @@ $VERIFY_ROWS
     });
   });
 
+  // Which steps are done, kept in this browser only, per domain. Storage can be
+  // missing or refuse (a private window, blocked site data); then the buttons
+  // still work for this visit and nothing is remembered.
+  var key = 'una-dns-setup:' + document.body.getAttribute('data-domain');
+  var doneSteps = {};
+  try { doneSteps = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { doneSteps = {}; }
+  var buttons = document.querySelectorAll('button.done');
+  var progress = document.getElementById('progress');
+
+  function render() {
+    var count = 0;
+    buttons.forEach(function (btn) {
+      var id = btn.getAttribute('data-step');
+      var on = !!doneSteps[id];
+      if (on) { count++; }
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      var tile = document.querySelector('[data-tile="' + id + '"]');
+      if (tile) { tile.classList.toggle('is-done', on); }
+    });
+    if (count > 0) {
+      progress.innerHTML = '<strong>' + count + ' of ' + buttons.length + '</strong> steps done.';
+    }
+  }
+
+  buttons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-step');
+      if (doneSteps[id]) { delete doneSteps[id]; } else { doneSteps[id] = true; }
+      try { localStorage.setItem(key, JSON.stringify(doneSteps)); } catch (e) {}
+      render();
+    });
+  });
+  render();
+
+  // Each step fades up the first time it scrolls into view.
+  var reveals = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.05, rootMargin: '0px 0px -8% 0px' });
+    reveals.forEach(function (el) { io.observe(el); });
+  } else {
+    reveals.forEach(function (el) { el.classList.add('in'); });
+  }
 })();
 </script>
 </body>
 </html>
 HTMLEOF
 
-chmod 644 web-root/dns-setup/index.html
+chmod 644 web-root/dns-setup/*
 chmod 755 web-root web-root/dns-setup
 
 echo "✅ Created the setup page"
