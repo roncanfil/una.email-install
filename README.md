@@ -227,7 +227,6 @@ This will:
 - `git pull` this repository, so you get the current compose file and scripts —
   not just the container images
 - Add `RSPAMD_PASSWORD` to your `.env` if you do not have one yet
-- Upgrade PostgreSQL 15 to 18 if you are still on 15 (see below)
 - Ask whether to back up your database first (default yes)
 - Pull latest images
 - Run migrations
@@ -390,67 +389,6 @@ Put back what you had with the pre-restore dump it names:
 ./restore.sh backups/pre-restore_20260922_181500.sql
 ```
 
-### Postgres 15 to 18
-
-Installs made before this release store their mail in PostgreSQL 15. This
-release runs PostgreSQL 18. There is no in-place upgrade between PostgreSQL
-majors, and the official 18 image also mounts a different path, so the data has
-to be dumped out of 15 and restored into a fresh 18 volume.
-
-`./update.sh` does this for you. **Run it while your existing stack is still
-up**, in this order:
-
-```bash
-cd una.email-install
-docker compose ps          # confirm your containers are running
-./update.sh                # pulls this repo, then upgrades Postgres, then updates
-```
-
-`update.sh` pulls the new files first and then performs the upgrade, so your
-old PostgreSQL 15 container is still the one running when the dump is taken —
-which is what the upgrade needs. If your stack is **down** when you start, the
-script will stop and tell you to bring the old one up first:
-
-```bash
-git stash                       # keep the new files for later
-git checkout 3246e1d            # the last PostgreSQL 15 release
-docker compose up -d postgres
-git checkout main && git stash pop
-./update.sh
-```
-
-Your PostgreSQL 15 volume is **never written to**. The upgrade dumps from it
-and restores onto a new `postgres_data_18` volume, so the old data stays
-exactly as it was and a rollback is always available.
-
-#### Rollback
-
-If something goes wrong after the upgrade, set the `postgres` service in
-`docker-compose.yml` back to:
-
-```yaml
-    image: postgres:15-alpine
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-```
-
-and run `docker compose up -d postgres`. (Checking out the previous release
-with `git checkout 3246e1d` does the same thing and also restores the rest of
-the old configuration.)
-
-Once you are confident the upgrade worked, reclaim the old volume:
-
-```bash
-docker volume rm unaemail-install_postgres_data
-```
-
-You can also rehearse the upgrade without touching anything — it restores into
-a throwaway volume, compares row counts, and destroys it again:
-
-```bash
-./scripts/upgrade-postgres.sh --dry-run
-```
-
 ### Renew SSL Certificate
 
 SSL auto-renewal is handled by cron. Set it up:
@@ -491,8 +429,6 @@ cd ~/una.email-install && docker compose down -v --remove-orphans
 
 docker ps -aq --filter "name=una-" | xargs -r docker rm -f
 
-# The Postgres 15 volume must go too — pg-guard refuses to start a fresh
-# Postgres 18 while a populated 15 volume is still present.
 docker volume ls -q | grep -iE 'una|postgres_data|rspamd_data|redis_data|clamav_data|attachments' \
   | xargs -r docker volume rm -f
 
@@ -551,8 +487,7 @@ telnet mail.yourdomain.com 25
 
 ## Architecture
 
-UNA Email runs 8 long-lived Docker containers, plus one that runs at startup
-and exits:
+UNA Email runs 8 Docker containers:
 
 | Service | Purpose |
 |---------|---------|
@@ -564,7 +499,6 @@ and exits:
 | **nginx** | Web server + SSL termination |
 | **certbot** | SSL certificate management |
 | **web** | Next.js web interface |
-| *pg-guard* | Runs once at startup and exits. Refuses to let PostgreSQL 18 start against an empty data volume while an old PostgreSQL 15 volume still holds your mail -- see [Postgres 15 to 18](#postgres-15-to-18). |
 
 ---
 

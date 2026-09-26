@@ -278,105 +278,17 @@ echo "Mail server: $SMTP_SUBDOMAIN.$DOMAIN  (MX, HELO, PTR)"
 echo "Web interface: $WEB_SUBDOMAIN.$DOMAIN"
 echo ""
 
-# Compose normalises the project name, so ask Compose rather than guessing at
-# the directory name. This also validates the compose file before we touch
-# anything.
-# `| head -1` is deliberately NOT used here: under `set -o pipefail` head exits
-# after the first line, sed is killed by SIGPIPE, and the whole pipeline reports
-# 141 -- which aborts this script under `set -e` before it prints anything at
-# all. It races, so it looks fine on macOS and fails on Linux, which is every
-# server this runs on. Let sed stop by itself instead.
-PROJECT="$(docker compose config --format json 2>/dev/null \
-    | sed -n '/"name":/{s/.*"name": *"\([^"]*\)".*/\1/p;q;}')"
-if [ -z "$PROJECT" ]; then
+# Validate the compose file before we touch anything.
+if ! docker compose config --quiet 2>/dev/null; then
     echo "❌ Could not read docker-compose.yml. Output:"
     docker compose config --quiet || true
     exit 1
 fi
 
 # ============================================
-# Step 3: PostgreSQL Major Version
+# Step 3: Create Backup
 # ============================================
-echo "Step 3: PostgreSQL Version"
-echo "--------------------------"
-
-# PostgreSQL 18 has no in-place upgrade from 15, and the official 18 image
-# mounts a different path (/var/lib/postgresql, PGDATA /var/lib/postgresql/18/
-# docker) than 15 did. So the data moves to a new volume via dump/restore, and
-# it has to happen BEFORE the new compose file starts an 18 server.
-#
-# Detect from the volumes, not from the running container: at this point the
-# stack may be down, and the compose file on disk already says 18.
-OLD_VOL="${PROJECT}_postgres_data"
-NEW_VOL="${PROJECT}_postgres_data_18"
-
-OLD_PG_VERSION=""
-if docker volume inspect "$OLD_VOL" > /dev/null 2>&1; then
-    OLD_PG_VERSION=$(docker run --rm -v "$OLD_VOL":/old:ro alpine \
-        cat /old/PG_VERSION 2>/dev/null | tr -d '[:space:]')
-fi
-
-NEW_PG_VERSION=""
-if docker volume inspect "$NEW_VOL" > /dev/null 2>&1; then
-    NEW_PG_VERSION=$(docker run --rm -v "$NEW_VOL":/new:ro alpine \
-        cat /new/18/docker/PG_VERSION 2>/dev/null | tr -d '[:space:]')
-fi
-
-if [ -n "$NEW_PG_VERSION" ]; then
-    echo "✅ Already on PostgreSQL $NEW_PG_VERSION"
-elif [ -z "$OLD_PG_VERSION" ]; then
-    echo "✅ No existing PostgreSQL data — nothing to upgrade"
-elif [ "$OLD_PG_VERSION" = "15" ]; then
-    echo "⚠️  Your data is on PostgreSQL 15. This release runs PostgreSQL 18."
-    echo ""
-
-    # The upgrade script dumps from the RUNNING 15 container. It does not write
-    # to the 15 volume at any point, so this is safe to retry.
-    if ! docker ps --format '{{.Names}}' | grep -qx "una-postgres"; then
-        echo "❌ The PostgreSQL 15 container is not running, and the compose file"
-        echo "   in this checkout now describes PostgreSQL 18 — starting it would"
-        echo "   not give us the 15 server the upgrade needs to dump from."
-        echo ""
-        echo "   Start your old stack, then run this script again:"
-        echo ""
-        echo "     git stash                       # keep the new files for later"
-        echo "     git checkout 3246e1d            # the last PostgreSQL 15 release"
-        echo "     docker compose up -d postgres"
-        echo "     git checkout main && git stash pop"
-        echo "     ./update.sh"
-        echo ""
-        echo "   Your data is untouched."
-        exit 1
-    fi
-
-    echo "🐘 Upgrading PostgreSQL 15 → 18 (dump and restore onto a new volume)."
-    echo "   Your PostgreSQL 15 volume is not written to and stays available"
-    echo "   for rollback."
-    echo ""
-    if ! ./scripts/upgrade-postgres.sh; then
-        echo ""
-        echo "❌ The PostgreSQL 15 → 18 upgrade failed."
-        echo ""
-        echo "   Your PostgreSQL 15 volume was never written to, so your data is"
-        echo "   intact and you can stay on 15: check out the previous"
-        echo "   install-repo commit and bring the old stack back up with"
-        echo "     git checkout 3246e1d && docker compose up -d"
-        echo "   then send the error above to support@una.email."
-        exit 1
-    fi
-    echo "✅ PostgreSQL upgraded to 18"
-else
-    echo "❌ Unexpected PostgreSQL version on '$OLD_VOL': $OLD_PG_VERSION"
-    echo "   Expected 15 (or an already-migrated 18 volume)."
-    echo "   Contact support@una.email before continuing."
-    exit 1
-fi
-echo ""
-
-# ============================================
-# Step 4: Create Backup
-# ============================================
-echo "Step 4: Creating Backup"
+echo "Step 3: Creating Backup"
 echo "-----------------------"
 
 # The dump is not a courtesy copy -- it is this script's rollback. If the
@@ -455,9 +367,9 @@ fi
 echo ""
 
 # ============================================
-# Step 5: Pull New Images
+# Step 4: Pull New Images
 # ============================================
-echo "Step 5: Pulling Latest Images"
+echo "Step 4: Pulling Latest Images"
 echo "-----------------------------"
 
 # IMAGE_TAG pinned to a release from before rspamd and nginx were published as
@@ -485,9 +397,9 @@ echo "✅ Images updated"
 echo ""
 
 # ============================================
-# Step 6: Restart Services
+# Step 5: Restart Services
 # ============================================
-echo "Step 6: Restarting Services"
+echo "Step 5: Restarting Services"
 echo "---------------------------"
 
 echo "🛑 Stopping containers..."
@@ -530,9 +442,9 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}"
 echo ""
 
 # ============================================
-# Step 7: Run Migrations
+# Step 6: Run Migrations
 # ============================================
-echo "Step 7: Database Migrations"
+echo "Step 6: Database Migrations"
 echo "---------------------------"
 
 # Every box installed before February 2026 was built by `prisma db push`, so
@@ -569,9 +481,7 @@ else
     if [ -n "$BACKUP_FILE" ]; then
         echo "🔄 Rolling back..."
         docker compose down
-        # Brings up PostgreSQL 18 on postgres_data_18 -- the same server the
-        # backup was just taken from. The dump is logical, so it restores onto
-        # 18 regardless of which major it came from.
+        # Brings up the same PostgreSQL the backup was just taken from.
         docker compose up -d postgres
         for _ in $(seq 1 60); do
             docker compose exec -T postgres pg_isready -U una_email > /dev/null 2>&1 && break
@@ -604,9 +514,9 @@ fi
 echo ""
 
 # ============================================
-# Step 8: Health Check
+# Step 7: Health Check
 # ============================================
-echo "Step 8: Verification"
+echo "Step 7: Verification"
 echo "--------------------"
 
 # Check web interface
@@ -680,13 +590,6 @@ echo ""
 if [ -n "$BACKUP_FILE" ]; then
     echo "📦 Backup saved to: $BACKUP_FILE"
     echo "   (Delete after verifying everything works)"
-    echo ""
-fi
-
-if [ -n "$OLD_PG_VERSION" ] && [ "$OLD_PG_VERSION" = "15" ]; then
-    echo "🐘 Your PostgreSQL 15 data volume ('$OLD_VOL') was left in place."
-    echo "   Once you are happy with this release, reclaim the space:"
-    echo "     docker volume rm $OLD_VOL"
     echo ""
 fi
 

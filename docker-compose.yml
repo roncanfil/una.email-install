@@ -1,35 +1,4 @@
 services:
-  # Blocks `docker compose up` from starting Postgres 18 against an empty
-  # postgres_data_18 while a populated Postgres 15 volume still exists.
-  # Fresh installs and already-migrated stacks pass; everyone else is told
-  # to run scripts/upgrade-postgres.sh first.
-  pg-guard:
-    image: alpine:3.21
-    container_name: una-pg-guard
-    volumes:
-      - postgres_data:/old:ro
-      - postgres_data_18:/new:ro
-    restart: "no"
-    networks:
-      - una-network
-    command:
-      - sh
-      - -c
-      - |
-        if [ ! -f /old/PG_VERSION ]; then
-          exit 0
-        fi
-        if [ -f /new/18/docker/PG_VERSION ]; then
-          exit 0
-        fi
-        cat >&2 <<'EOF'
-        An existing Postgres 15 data volume was found and the Postgres 18 volume is empty.
-        Run ./scripts/upgrade-postgres.sh from the repo root, then docker compose up -d again.
-        To roll back, point the postgres service at postgres_data:/var/lib/postgresql/data
-        and image postgres:15-alpine.
-        EOF
-        exit 1
-
   postgres:
     image: postgres:18-alpine
     container_name: una-postgres
@@ -38,16 +7,11 @@ services:
       POSTGRES_USER: una_email
       POSTGRES_PASSWORD: ${DB_PASSWORD:-una_email_password}
     volumes:
-      # Postgres 18 moved the image's declared volume from
-      # /var/lib/postgresql/data to /var/lib/postgresql
-      # (PGDATA is now /var/lib/postgresql/18/docker). Upgrading from 15 has no
-      # in-place path, so this is a new volume populated by
-      # scripts/upgrade-postgres.sh; postgres_data is kept for rollback.
+      # Postgres 18 declares /var/lib/postgresql as its volume (PGDATA is
+      # /var/lib/postgresql/18/docker), not the /var/lib/postgresql/data of
+      # earlier majors.
       - postgres_data_18:/var/lib/postgresql
     restart: unless-stopped
-    depends_on:
-      pg-guard:
-        condition: service_completed_successfully
     networks:
       - una-network
     healthcheck:
@@ -325,7 +289,6 @@ services:
       start_period: 30s
 
 volumes:
-  postgres_data:      # PostgreSQL 15 data, retained for rollback
   postgres_data_18:
   attachments_data:
   rspamd_data:
