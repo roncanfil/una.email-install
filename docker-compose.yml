@@ -132,8 +132,11 @@ services:
       DB_PORT: 5432
       DB_NAME: una_email
       DB_USER: una_email
-      DB_PASSWORD: ${DB_PASSWORD}
-      DATABASE_URL: postgresql://una_email:${DB_PASSWORD}@postgres:5432/una_email
+      # Same fallback as the postgres service: an .env without DB_PASSWORD got
+      # a database initialised with the default, and every service has to
+      # agree on it or the one without the fallback is locked out.
+      DB_PASSWORD: ${DB_PASSWORD:-una_email_password}
+      DATABASE_URL: postgresql://una_email:${DB_PASSWORD:-una_email_password}@postgres:5432/una_email
       # Without this the send API listens on 3002 and MAIL_API_URL
       # (http://postfix:3000) cannot reach it.
       API_PORT: 3000

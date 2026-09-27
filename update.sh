@@ -285,6 +285,60 @@ if ! docker compose config --quiet 2>/dev/null; then
     exit 1
 fi
 
+# Prove DB_PASSWORD still opens the database before anything is stopped.
+#
+# Postgres keeps the password its volume was first initialised with and never
+# reads DB_PASSWORD again. .env can drift from it, and running containers keep
+# the environment they were started with, so the drift stays invisible until
+# the containers are recreated -- which is exactly what step 5 does. Found
+# there, it means downtime and a migration that cannot connect; found here, it
+# means nothing has been touched yet.
+DB_PASSWORD_EFFECTIVE="${DB_PASSWORD:-una_email_password}"
+
+# The compose file splices the password into a postgresql:// URL unencoded, so
+# these characters break the URL even when the password itself is right.
+if printf '%s' "$DB_PASSWORD_EFFECTIVE" | grep -qE '[][@:/?#%[:space:]]'; then
+    echo "❌ DB_PASSWORD contains a character that breaks the database URL"
+    echo "   (one of @ : / ? # % [ ] or a space)."
+    echo ""
+    echo "   Pick a password of letters and digits (openssl rand -hex 16 makes"
+    echo "   one), put it in .env as DB_PASSWORD, set the database to match:"
+    echo ""
+    echo "     echo \"ALTER ROLE una_email WITH PASSWORD :'pw';\" | \\"
+    echo "       docker compose exec -T postgres psql -U una_email -d una_email \\"
+    echo "       -v pw=\"\$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)\""
+    echo ""
+    echo "   then run ./update.sh again. Nothing has been changed."
+    exit 1
+fi
+
+# The fix above goes in on stdin because psql does not substitute :'pw' in a
+# -c string, and -v keeps the password out of the SQL text.
+#
+# Over the network (-h postgres), the way the app connects. The image trusts
+# the socket and localhost, so a check through either passes with any password.
+if docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
+    if docker compose exec -T -e PGPASSWORD="$DB_PASSWORD_EFFECTIVE" postgres \
+        psql -h postgres -U una_email -d una_email -tAc 'select 1' > /dev/null 2>&1; then
+        echo "✅ DB_PASSWORD opens the database"
+    else
+        echo "❌ The database does not accept the DB_PASSWORD in .env."
+        echo ""
+        echo "   Postgres still has the password it was first set up with. If the"
+        echo "   one in .env is the one you want, set the database to match it:"
+        echo ""
+        echo "     echo \"ALTER ROLE una_email WITH PASSWORD :'pw';\" | \\"
+        echo "       docker compose exec -T postgres psql -U una_email -d una_email \\"
+        echo "       -v pw=\"\$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)\""
+        echo ""
+        echo "   then run ./update.sh again. Nothing has been changed."
+        exit 1
+    fi
+else
+    echo "⚠️  Postgres is not running, so DB_PASSWORD could not be checked."
+fi
+echo ""
+
 # ============================================
 # Step 3: Create Backup
 # ============================================
@@ -497,8 +551,12 @@ else
         docker compose exec -T postgres psql -U una_email una_email -v ON_ERROR_STOP=1 < "$BACKUP_FILE"
         docker compose up -d
         echo ""
-        echo "✅ Rolled back to previous state"
-        echo "   Your data has been restored from: $BACKUP_FILE"
+        # Only the database goes back. The images pulled in step 4 stay, so
+        # what is running now is the new release on the pre-update data --
+        # say that, rather than "previous state", which it is not.
+        echo "✅ Database restored from: $BACKUP_FILE"
+        echo "   The new images are still in place: the containers now running"
+        echo "   are this release, on your data as it was before the update."
     else
         echo "⚠️  No backup was taken, so nothing was rolled back."
         echo "   The database is part-way through a migration and the new"
