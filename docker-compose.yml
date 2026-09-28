@@ -19,6 +19,13 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    # Same cap as the other services. Without it these three logged without
+    # limit: Docker's default json-file driver never rotates.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -228,6 +235,11 @@ services:
       - ./web-root:/var/www/certbot
     networks:
       - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/web:${IMAGE_TAG:-latest}
@@ -290,6 +302,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data_18:

@@ -444,6 +444,53 @@ if [ -n "${IMAGE_TAG:-}" ] && [ "$IMAGE_TAG" != "latest" ]; then
     fi
 fi
 
+# Every update leaves the images it replaced behind, untagged: four of them,
+# about 1.9GB, each time. Nothing here ever removed them, and on a 24GB box
+# seven updates had put 9GB of them on disk. They are not a rollback -- a
+# failed migration restores the database, not the images -- so they go:
+# leftovers from earlier updates now, before the download needs the room, and
+# the ones this update replaces at the end.
+#
+# Only untagged images from this install's own repositories, so an image
+# some other project on the box left dangling is not ours to delete.
+prune_replaced_images() {
+    local repos
+    repos=$(docker compose config --images 2>/dev/null | sed 's/[:@][^/]*$//' | sort -u || true)
+    [ -z "$repos" ] && return 0
+    local removed=0
+    while read -r id repo; do
+        [ -z "$id" ] && continue
+        if printf '%s\n' "$repos" | grep -qxF "$repo"; then
+            docker rmi "$id" > /dev/null 2>&1 && removed=$((removed + 1))
+        fi
+    done < <(docker images --filter dangling=true --format '{{.ID}} {{.Repository}}')
+    if [ "$removed" -gt 0 ]; then
+        echo "🧹 Removed $removed replaced image(s)"
+    fi
+}
+
+# Free space where Docker keeps its images, in KB.
+docker_free_kb() {
+    local root
+    root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)
+    df -Pk "${root:-/var/lib/docker}" 2>/dev/null | awk 'NR==2 {print $4}' || true
+}
+
+prune_replaced_images
+
+# A pull that runs out of disk half way leaves layers nobody can use, and a
+# full disk is also where Postgres stops accepting writes -- so stop here,
+# with nothing changed, rather than find out part way through. 2GB is a
+# full set of new images with a little room to spare.
+FREE_KB=$(docker_free_kb)
+if [ -n "$FREE_KB" ] && [ "$FREE_KB" -lt 2097152 ]; then
+    echo "❌ Only $((FREE_KB / 1024))MB free for Docker; this update needs about 2GB."
+    echo ""
+    echo "   See what is using the space:   docker system df"
+    echo "   Nothing has been changed. Free some space, then run ./update.sh again."
+    exit 1
+fi
+
 echo "🚀 Downloading updates..."
 docker compose pull
 
@@ -645,11 +692,33 @@ echo "       Update Complete!"
 echo "=========================================="
 echo ""
 
+# The containers are on the new images now, so the ones they replaced are
+# untagged and unused.
+prune_replaced_images
+
+# One dump per update, and nothing ever removed them. Keep the ten newest:
+# the one this run just took, and enough history to reach back past a bad
+# week. Only this script's own backup_*.sql, never anything else in backups/.
+if [ -d backups ]; then
+    # `|| true` so a failing listing can never end the script under set -e.
+    OLD_BACKUPS=$(ls -1t backups/backup_*.sql 2>/dev/null | tail -n +11 || true)
+    if [ -n "$OLD_BACKUPS" ]; then
+        printf '%s\n' "$OLD_BACKUPS" | xargs rm -f
+        echo "🧹 Kept the 10 newest backups, removed $(printf '%s\n' "$OLD_BACKUPS" | wc -l | tr -d ' ')"
+    fi
+fi
+
 if [ -n "$BACKUP_FILE" ]; then
     echo "📦 Backup saved to: $BACKUP_FILE"
-    echo "   (Delete after verifying everything works)"
+    echo "   (The 10 newest are kept; older ones are removed on each update.)"
     echo ""
 fi
+
+FREE_KB=$(docker_free_kb)
+if [ -n "$FREE_KB" ]; then
+    echo "💾 Disk: $((FREE_KB / 1024))MB free for Docker"
+fi
+echo ""
 
 echo "🌐 Web Interface: https://$WEB_SUBDOMAIN.$DOMAIN"
 echo ""
