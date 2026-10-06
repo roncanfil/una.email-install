@@ -1,0 +1,127 @@
+UNA END USER LICENSE AGREEMENT
+
+Copyright (c) 2026 Ronald Canfield ("the Licensor"). All rights reserved.
+
+UNA is proprietary software. It is licensed, not sold. By installing, running
+or otherwise using UNA you agree to this agreement. If you do not agree, do
+not install or use it.
+
+1. DEFINITIONS
+
+"Software" means UNA: the container images published by the Licensor
+(including the web, mail, rspamd and nginx images), the installation and
+update scripts in this repository, and all code, configuration, documentation
+and updates delivered with them.
+
+"Install" means one running deployment of the Software, identified by its
+install id and serving one host name.
+
+"License Key" means a key issued by the Licensor at https://license.una.email
+that names the licensee, the host and an expiry date, and is signed by the
+Licensor.
+
+2. GRANT
+
+2.1 Evaluation. You may install and use one Install of the Software, free of
+charge, for ninety (90) days from the day it is installed, to evaluate it.
+
+2.2 Paid license. Subject to payment of the applicable fee and to this
+agreement, the Licensor grants you a non-exclusive, non-transferable,
+non-sublicensable license to run one Install of the Software, on the host
+named in your License Key, until the expiry date in that key.
+
+2.3 Everything else is reserved. No right is granted except those expressly
+stated in this agreement.
+
+3. RESTRICTIONS
+
+You may not, and may not permit or help anyone else to:
+
+(a) copy the Software, except as needed to run your licensed Install and to
+    keep reasonable backups of it;
+(b) modify, adapt, translate or create derivative works of the Software;
+(c) decompile, disassemble, deobfuscate, reverse engineer or otherwise attempt
+    to derive the source code, structure or algorithms of the Software, or
+    extract code from its container images, except to the extent applicable
+    law expressly permits this despite this restriction;
+(d) use the Software, or any knowledge obtained from examining it, to build,
+    train, benchmark for, or assist in building a product or service that
+    competes with UNA;
+(e) distribute, sell, rent, lease, lend, sublicense, publish or otherwise
+    make the Software available to any third party, including by re-hosting
+    or mirroring its container images;
+(f) offer the Software, or an Install of it, to third parties as a hosted or
+    managed service;
+(g) remove, bypass, disable or tamper with the license check (including the
+    verification in section 6), the License Key, the evaluation period or
+    any copyright or licensing notice, or create or distribute keys not
+    issued by the Licensor;
+(h) run more Installs than you hold licenses for.
+
+4. OWNERSHIP
+
+The Software, and all copies of it, including every copy inside a container
+image you pulled, are and remain the property of the Licensor and its
+licensors and are protected by copyright and other laws. Reading the
+Software's code is not permission to reuse it.
+
+5. THIRD-PARTY COMPONENTS
+
+The Software includes open-source components (for example Postfix, Rspamd,
+nginx, Node.js and npm packages). Each is licensed to you under its own
+license, which this agreement does not replace or limit. The restrictions in
+section 3 apply to the Licensor's own code and to the Software as a whole.
+
+6. LICENSE VERIFICATION
+
+The Software contacts https://license.una.email when it starts and about once
+a day to confirm its evaluation period or License Key. Each check sends the
+Install's id, its mail domain, its License Key if one is installed, and, as
+part of any network request, the server's IP address. No mail, message
+content, user names or addresses of your users are sent. The Licensor uses
+this information only to operate licensing, prevent misuse of the evaluation
+period and enforce this agreement. The Software needs outbound HTTPS access to
+license.una.email to operate; if it cannot confirm its license for fourteen
+(14) days, it restricts itself as it does when a license expires. Blocking,
+spoofing or interfering with this check is a breach of section 3(g).
+
+7. UPDATES AND SUPPORT
+
+The Licensor may provide updates. Updates are part of the Software and are
+covered by this agreement. Nothing in this agreement obliges the Licensor to
+provide updates or support.
+
+8. TERM AND TERMINATION
+
+This agreement lasts for as long as you use the Software. It ends
+automatically, without notice, if you breach it. When it ends, or when your
+evaluation period or License Key expires without renewal, your right to use
+the Software as licensed ends. You may keep reading and exporting mail you
+already have, to the extent the Software allows.
+
+9. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NON-INFRINGEMENT. YOU ARE RESPONSIBLE FOR YOUR SERVER, YOUR DATA,
+YOUR BACKUPS AND YOUR COMPLIANCE WITH THE LAWS THAT APPLY TO THE MAIL YOU
+HANDLE.
+
+10. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSOR IS NOT LIABLE FOR ANY
+INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE DAMAGES, OR FOR LOST
+DATA, MAIL, PROFITS OR REVENUE, ARISING FROM THE SOFTWARE OR THIS AGREEMENT.
+THE LICENSOR'S TOTAL LIABILITY IS LIMITED TO THE AMOUNT YOU PAID FOR THE
+LICENSE IN THE TWELVE (12) MONTHS BEFORE THE CLAIM.
+
+11. GENERAL
+
+This agreement is governed by the laws of Portugal, and the courts of
+Portugal have exclusive jurisdiction, without prejudice to any mandatory
+consumer protection rights you have under the law of your country of
+residence. If any part of it is unenforceable, the rest remains
+in effect. It is the entire agreement between you and the Licensor about the
+Software.
+
+Licensing and questions: https://license.una.email

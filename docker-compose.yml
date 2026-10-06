@@ -1,0 +1,320 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: una-postgres
+    environment:
+      POSTGRES_DB: una_email
+      POSTGRES_USER: una_email
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-una_email_password}
+    volumes:
+      # Postgres 18 declares /var/lib/postgresql as its volume (PGDATA is
+      # /var/lib/postgresql/18/docker), not the /var/lib/postgresql/data of
+      # earlier majors.
+      - postgres_data_18:/var/lib/postgresql
+    restart: unless-stopped
+    networks:
+      - una-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U una_email"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Same cap as the other services. Without it these three logged without
+    # limit: Docker's default json-file driver never rotates.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: una-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru --save ""
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - una-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  clamav:
+    image: clamav/clamav:stable
+    container_name: una-clamav
+    volumes:
+      - clamav_data:/var/lib/clamav
+    restart: unless-stopped
+    networks:
+      - una-network
+    healthcheck:
+      # The official image ships clamdcheck.sh on PATH; plain `clamdcheck` does
+      # not exist, so the old test failed on every interval and the container
+      # never reported healthy.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  rspamd:
+    # Rspamd 4.1 with UNA's spam, DKIM-signing and rate-limit configuration
+    # already in /etc/rspamd/local.d. That configuration used to be 18 files
+    # bind-mounted from this repo; it is built into the image now, so there is
+    # nothing here to keep in step with the application.
+    #
+    # The base version stays pinned inside the image -- the config is proven
+    # against Rspamd 4.1 specifically, so the tag you choose below moves UNA's
+    # config forward, never the Rspamd major version underneath it.
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/rspamd:${IMAGE_TAG:-latest}
+    container_name: una-rspamd
+    environment:
+      # Read by the image's worker-controller.inc as `env.controller_password`
+      # and hashed at startup, so the controller (and its /learnspam and
+      # /learnham endpoints) stop accepting Rspamd's default "q1". It is hashed
+      # at container start, not baked in: the image never contains a password.
+      RSPAMD_controller_password: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
+    volumes:
+      - rspamd_data:/var/lib/rspamd
+      # Empty, and optional. Drop a .conf file in ./rspamd/override.d to change
+      # a shipped default on this install -- a different reject threshold, say,
+      # or a greylisting IP whitelist. override.d replaces a section outright
+      # where the image's local.d merges into it, so an override wins and
+      # survives every image update. Nothing in here is tracked by git.
+      - ./rspamd/override.d:/etc/rspamd/override.d:ro
+      # DKIM signing keys, read-only: Rspamd reads
+      # /var/lib/rspamd/dkim/$selector.$domain.key and never writes one.
+      #
+      # A host directory, not a corner of rspamd_data as it used to be. The web
+      # container writes a key when an admin adds a domain from
+      # Settings -> Domains, and two containers cannot share a path that only
+      # one of them has. update.sh copies the keys out of the old volume into
+      # ./dkim before this mount hides them.
+      - ./dkim:/var/lib/rspamd/dkim:ro
+    ports:
+      # Localhost only. The web container reaches the controller over the
+      # compose network at http://rspamd:11334 regardless; nothing outside the
+      # host needs it.
+      - "127.0.0.1:11334:11334"
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - clamav
+    networks:
+      - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postfix:
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/mail:${IMAGE_TAG:-latest}
+    container_name: una-postfix
+    environment:
+      DOMAIN: ${DOMAIN}
+      # The SMTP identity: $myhostname, the HELO/EHLO name and the banner, so
+      # the MX record and the PTR record both have to be this name. `mail` is
+      # the default and was the hardcoded value before it became a setting.
+      SMTP_SUBDOMAIN: ${SMTP_SUBDOMAIN:-mail}
+      # The webmail hostname, needed here only to find the certificate: one
+      # certificate covers both names and certbot files it under the first one.
+      # MAIL_SUBDOMAIN is the old spelling of WEB_SUBDOMAIN -- it always meant
+      # the web name -- so an .env written before the rename still resolves.
+      WEB_SUBDOMAIN: ${WEB_SUBDOMAIN:-${MAIL_SUBDOMAIN:-webmail}}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: una_email
+      DB_USER: una_email
+      # Same fallback as the postgres service: an .env without DB_PASSWORD got
+      # a database initialised with the default, and every service has to
+      # agree on it or the one without the fallback is locked out.
+      DB_PASSWORD: ${DB_PASSWORD:-una_email_password}
+      DATABASE_URL: postgresql://una_email:${DB_PASSWORD:-una_email_password}@postgres:5432/una_email
+      # Without this the send API listens on 3002 and MAIL_API_URL
+      # (http://postfix:3000) cannot reach it.
+      API_PORT: 3000
+      ATTACHMENTS_PATH: /data/attachments
+      # Rspamd milter configuration
+      POSTFIX_smtpd_milters: inet:rspamd:11332
+      POSTFIX_non_smtpd_milters: inet:rspamd:11332
+      POSTFIX_milter_protocol: "6"
+      # accept, not tempfail: if Rspamd is down, mail still flows.
+      POSTFIX_milter_default_action: accept
+
+      # --- Outbound relay (optional) ---------------------------------------
+      #
+      # Unset, which is the default, means Postfix delivers straight to each
+      # recipient's MX on port 25 -- exactly as it always has. Set these to
+      # hand outbound mail to a smarthost instead, for a VPS whose port 25 is
+      # blocked or whose IP is in a blocklist. Inbound is unaffected either
+      # way: the MX still points here and port 25 above is still open.
+      #
+      # Deliberately not passed to `web`: the SASL password belongs to the one
+      # process that authenticates with it. The web app learns the mode from
+      # the mail API's /health, which never returns credentials.
+      SMTP_RELAY_PROVIDER: ${SMTP_RELAY_PROVIDER:-}
+      SMTP_RELAY_REGION: ${SMTP_RELAY_REGION:-}
+      SMTP_RELAY_HOST: ${SMTP_RELAY_HOST:-}
+      SMTP_RELAY_PORT: ${SMTP_RELAY_PORT:-}
+      SMTP_RELAY_USERNAME: ${SMTP_RELAY_USERNAME:-}
+      SMTP_RELAY_PASSWORD: ${SMTP_RELAY_PASSWORD:-}
+
+      # Decrypts the relay password stored in `relay_settings` when outbound is
+      # configured from Settings -> Sending rather than from the keys above.
+      # The web container holds the same key and does the encrypting; this is
+      # the only process that turns it back into a password, and it writes it
+      # straight to /etc/postfix/sasl_passwd at 0600.
+      RELAY_KEY: ${RELAY_KEY:?set RELAY_KEY in .env}
+    volumes:
+      - ./letsencrypt/etc:/etc/letsencrypt
+      - attachments_data:/data/attachments
+    ports:
+      - "25:25"
+    depends_on:
+      - postgres
+      - rspamd
+    restart: unless-stopped
+    networks:
+      - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    # The reverse proxy in front of the web app, with its config template and
+    # its first-boot entrypoint built in -- both used to be bind-mounted from
+    # ./nginx, which no longer exists. The entrypoint mints a self-signed
+    # certificate so Nginx can start before certbot has ever run, then hands
+    # over to the real one on later boots.
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/nginx:${IMAGE_TAG:-latest}
+    container_name: una-nginx
+    volumes:
+      - ./letsencrypt/etc:/etc/letsencrypt
+      - ./web-root:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+      # Nginx serves the webmail UI and nothing else; the SMTP hostname is not
+      # its business. See the postfix service for why MAIL_SUBDOMAIN is still
+      # read as a fallback.
+      - WEB_SUBDOMAIN=${WEB_SUBDOMAIN:-${MAIL_SUBDOMAIN:-webmail}}
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot:v5.8.0
+    container_name: una-certbot
+    volumes:
+      - ./letsencrypt/etc:/etc/letsencrypt
+      - ./web-root:/var/www/certbot
+    networks:
+      - una-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY:-roncanfil/una.email}/web:${IMAGE_TAG:-latest}
+    container_name: una-web
+    environment:
+      DATABASE_URL: postgresql://una_email:${DB_PASSWORD:-una_email_password}@postgres:5432/una_email
+      DOMAIN: ${DOMAIN:-mydomain.local}
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      ATTACHMENTS_PATH: /data/attachments
+      # Sending goes through the Postfix container's API, not SMTP.
+      MAIL_API_URL: http://postfix:3000
+      # Teaching the Bayes classifier from "Report spam" / "Not spam".
+      RSPAMD_URL: http://rspamd:11334
+      RSPAMD_PASSWORD: ${RSPAMD_PASSWORD:?set RSPAMD_PASSWORD in .env}
+      # Signs the session cookie. Required the same way RSPAMD_PASSWORD is: an
+      # unset secret must stop the stack, not leave the app issuing a cookie
+      # that verifies against itself. install.sh generates it; update.sh adds
+      # one to installs that predate it.
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      # Web Push (VAPID). Required the same way and for the same reason: an
+      # unset key would not stop the app, it would make every notification
+      # silently not happen, which reads as a broken feature rather than a
+      # missing setting. install.sh generates a pair; update.sh adds one to
+      # installs that predate Phase 6.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:?set VAPID_PUBLIC_KEY in .env}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:?set VAPID_PRIVATE_KEY in .env}
+      # Encrypts the outbound relay password before it is stored. Required the
+      # same way and for the same reason as the keys above: an unset key would
+      # not stop the app, it would fail the first time someone configured a
+      # relay -- at the moment their mail had already started bouncing.
+      RELAY_KEY: ${RELAY_KEY:?set RELAY_KEY in .env}
+      # Who the push service contacts about this application server.
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@${DOMAIN:-localhost}}
+      # The SMTP hostname, for display only: Settings -> Sending draws the
+      # inbound path and needs the name the MX points at. Nothing here acts on
+      # it -- Postfix's own $$myhostname comes from the postfix service above.
+      SMTP_SUBDOMAIN: ${SMTP_SUBDOMAIN:-mail}
+    volumes:
+      - attachments_data:/data/attachments
+      # The same ./dkim the rspamd service mounts read-only, read-write here.
+      # Adding a domain from Settings -> Domains writes the key pair and the
+      # DNS snippet; without this mount they would go into the container's
+      # overlay filesystem and be lost on the next recreate, and Rspamd would
+      # never see them at all.
+      - ./dkim:/app/dkim
+    depends_on:
+      - postgres
+      - postfix
+      - rspamd
+    restart: unless-stopped
+    networks:
+      - una-network
+    healthcheck:
+      # wget, not curl: the web image is node:*-alpine based and ships busybox
+      # wget only. The old `curl -sf` test could never succeed, so this
+      # container never reported healthy.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data_18:
+  attachments_data:
+  rspamd_data:
+  redis_data:
+  clamav_data:
+
+networks:
+  una-network:
+    driver: bridge

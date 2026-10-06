@@ -1,0 +1,10 @@
+# DKIM signing keys live here, one set per mail domain:
+#   una.<domain>.key      private key, mounted read-only into rspamd
+#   una.<domain>.pub      public half
+#   una.<domain>.dns.txt  the TXT record to publish
+#
+# install.sh writes the first set; Settings -> Domains writes one per domain
+# added afterwards. Both rspamd (read-only) and web (read-write) mount this
+# directory -- see docker-compose.yml.
+#
+# IMPORTANT: never commit private keys (.key files) to git.
