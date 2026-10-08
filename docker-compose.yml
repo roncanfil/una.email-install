@@ -130,6 +130,11 @@ services:
       # the MX record and the PTR record both have to be this name. `mail` is
       # the default and was the hardcoded value before it became a setting.
       SMTP_SUBDOMAIN: ${SMTP_SUBDOMAIN:-mail}
+      # HANDLER_DEBUG=1 in .env adds every message's sender, subject and
+      # Message-ID to the handler's log in Settings -> Logs. Off by default:
+      # it is a record of everyone's mail. Turn it on to chase a delivery
+      # problem, then off again.
+      HANDLER_DEBUG: ${HANDLER_DEBUG:-}
       # The webmail hostname, needed here only to find the certificate: one
       # certificate covers both names and certbot files it under the first one.
       # MAIL_SUBDOMAIN is the old spelling of WEB_SUBDOMAIN -- it always meant
