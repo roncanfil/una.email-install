@@ -24,3 +24,6 @@ rspamd/override.d/*
 # Local developer tools (dev/try.sh runs these scripts against a fake Docker).
 # Kept on the maintainer's machine, never shipped to installs.
 dev/
+
+# Update logs, written by update.sh (the 10 newest are kept).
+logs/

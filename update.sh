@@ -20,6 +20,13 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Everything the screen hides -- each command's full output, exit status and
+# timing -- goes to a log, for when something goes wrong. Exported so the
+# re-exec below carries on in the same file.
+UNA_UPDATE_LOG="${UNA_UPDATE_LOG:-logs/update_$(date +%Y%m%d_%H%M%S).log}"
+export UNA_UPDATE_LOG
+ui_log_start "$UNA_UPDATE_LOG" "Update"
+
 # ============================================
 # Step 1: Update This Repository
 # ============================================
@@ -35,7 +42,7 @@ fi
 # new copy from the top and set this variable so the new process skips the
 # pull it has already done.
 if [ -z "${UNA_UPDATE_REEXEC:-}" ]; then
-    ui_step 1 7 "Updating UNA Email files"
+    ui_step 1 8 "Updating UNA Email files"
 
     if [ ! -d .git ]; then
         ui_fail "This directory is not a git checkout."
@@ -73,7 +80,7 @@ fi
 # ============================================
 # Step 2: Check Configuration
 # ============================================
-ui_step 2 7 "Configuration"
+ui_step 2 8 "Configuration"
 
 # RSPAMD_PASSWORD became required: docker-compose.yml refuses to start without
 # it. Installs made before it existed have no such line, so add one. Only ever
@@ -204,7 +211,7 @@ fi
 mkdir -p dkim
 if [ -z "$(ls -A dkim 2>/dev/null | grep -v '^\.gitkeep$')" ] \
    && docker ps --format '{{.Names}}' | grep -qx una-rspamd; then
-    if docker cp una-rspamd:/var/lib/rspamd/dkim/. ./dkim/ 2>/dev/null; then
+    if ui_logged docker cp una-rspamd:/var/lib/rspamd/dkim/. ./dkim/; then
         # Only the private keys are secret; the rest of the directory listing
         # is public material. Re-apply the modes the new code expects, and the
         # group Rspamd reads as (uid/gid 11333 in rspamd/rspamd:4.1) -- a
@@ -334,7 +341,7 @@ fi
 # ============================================
 # Step 3: Create Backup
 # ============================================
-ui_step 3 7 "Backup"
+ui_step 3 8 "Backup"
 
 # The dump is not a courtesy copy -- it is this script's rollback. If the
 # migration in step 7 fails, step 7 restores from it and puts you back where
@@ -389,7 +396,7 @@ else
     BACKUP_FILE="$BACKUP_DIR/backup_${TIMESTAMP}.sql"
 
     dump_database() {
-        docker compose exec -T postgres pg_dump -U una_email una_email > "$BACKUP_FILE" 2>/dev/null
+        docker compose exec -T postgres pg_dump -U una_email una_email > "$BACKUP_FILE"
     }
     if ui_spin "Backing up the database" "" dump_database; then
         BACKUP_SIZE=$(ls -lh "$BACKUP_FILE" | awk '{print $5}')
@@ -413,7 +420,7 @@ fi
 # ============================================
 # Step 4: Pull New Images
 # ============================================
-ui_step 4 7 "Images"
+ui_step 4 8 "Images"
 
 # IMAGE_TAG pinned to a release from before rspamd and nginx were published as
 # images will not find them: CI only started tagging those two from this
@@ -441,19 +448,35 @@ fi
 #
 # Only untagged images from this install's own repositories, so an image
 # some other project on the box left dangling is not ours to delete.
-prune_replaced_images() {
+replaced_images() {
     local repos
     repos=$(docker compose config --images 2>/dev/null | sed 's/[:@][^/]*$//' | sort -u || true)
     [ -z "$repos" ] && return 0
-    local removed=0
     while read -r id repo; do
         [ -z "$id" ] && continue
-        if printf '%s\n' "$repos" | grep -qxF "$repo"; then
-            docker rmi "$id" > /dev/null 2>&1 && removed=$((removed + 1))
-        fi
+        if printf '%s\n' "$repos" | grep -qxF "$repo"; then echo "$id"; fi
     done < <(docker images --filter dangling=true --format '{{.ID}} {{.Repository}}')
-    if [ "$removed" -gt 0 ]; then
-        ui_ok "Removed $removed replaced image(s)"
+}
+
+remove_images() {
+    local id
+    for id in "$@"; do docker rmi "$id" || true; done
+}
+
+# Deleting a couple of GB of layers takes a while, so it runs behind a
+# spinner. Sets PRUNED to the number actually removed.
+prune_replaced_images() {
+    local ids before after
+    PRUNED=0
+    ids=$(replaced_images)
+    [ -z "$ids" ] && return 0
+    before=$(printf '%s\n' "$ids" | wc -l | tr -d ' ')
+    # shellcheck disable=SC2086  # one image ID per word
+    ui_spin "Removing $before replaced image(s)" "" remove_images $ids || true
+    after=$(replaced_images | grep -c . || true)
+    PRUNED=$((before - after))
+    if [ "$PRUNED" -gt 0 ]; then
+        ui_ok "Removed $PRUNED replaced image(s)"
     fi
 }
 
@@ -484,7 +507,7 @@ ui_spin "Downloading updates" "Images updated" docker compose pull
 # ============================================
 # Step 5: Restart Services
 # ============================================
-ui_step 5 7 "Restarting services"
+ui_step 5 8 "Restarting services"
 
 ui_spin "Stopping containers" "Containers stopped" docker compose down
 ui_spin "Starting containers" "Containers started" docker compose up -d
@@ -508,7 +531,7 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}" | ui_indent
 # ============================================
 # Step 6: Run Migrations
 # ============================================
-ui_step 6 7 "Database migrations"
+ui_step 6 8 "Database migrations"
 
 # Every box installed before February 2026 was built by `prisma db push`, so
 # it has the schema and an empty _prisma_migrations. `migrate deploy` refuses
@@ -569,32 +592,32 @@ if ! ui_spin "Applying database migrations" "Migrations complete" \
     fi
 
     echo ""
-    ui_text "Please contact support@una.email with the error above."
+    ui_text "Please contact support@una.email and attach the log named below."
     exit 1
 fi
 
 # ============================================
 # Step 7: Health Check
 # ============================================
-ui_step 7 7 "Verification"
+ui_step 7 8 "Verification"
 
 # Check web interface
 ui_spin "Letting the services settle" "" sleep 5
-if docker compose exec -T web wget -q -O /dev/null http://localhost:3000 > /dev/null 2>&1; then
+if ui_logged docker compose exec -T web wget -q -O /dev/null http://localhost:3000; then
     ui_status ok "Web interface" "responding"
 else
     ui_status warn "Web interface" "not responding (may still be starting)"
 fi
 
 # Check Postfix
-if docker compose exec -T postfix postfix status > /dev/null 2>&1; then
+if ui_logged docker compose exec -T postfix postfix status; then
     ui_status ok "Mail server" "running"
 else
     ui_status warn "Mail server" "check logs: docker compose logs postfix"
 fi
 
 # Check Rspamd
-if docker compose exec -T rspamd rspamadm configtest > /dev/null 2>&1; then
+if ui_logged docker compose exec -T rspamd rspamadm configtest; then
     ui_status ok "Spam filter" "running"
 else
     ui_status warn "Spam filter" "check logs: docker compose logs rspamd"
@@ -633,13 +656,14 @@ else
 fi
 
 # ============================================
-# Complete
+# Step 8: Clean Up
 # ============================================
-ui_done "Update complete"
+ui_step 8 8 "Clean up"
 
 # The containers are on the new images now, so the ones they replaced are
 # untagged and unused.
 prune_replaced_images
+CLEANED=$PRUNED
 
 # One dump per update, and nothing ever removed them. Keep the ten newest:
 # the one this run just took, and enough history to reach back past a bad
@@ -650,8 +674,28 @@ if [ -d backups ]; then
     if [ -n "$OLD_BACKUPS" ]; then
         printf '%s\n' "$OLD_BACKUPS" | xargs rm -f
         ui_ok "Kept the 10 newest backups, removed $(printf '%s\n' "$OLD_BACKUPS" | wc -l | tr -d ' ')"
+        CLEANED=$((CLEANED + 1))
     fi
 fi
+
+# Same for this script's own logs.
+if [ -d logs ]; then
+    OLD_LOGS=$(ls -1t logs/update_*.log 2>/dev/null | tail -n +11 || true)
+    if [ -n "$OLD_LOGS" ]; then
+        printf '%s\n' "$OLD_LOGS" | xargs rm -f
+        ui_ok "Kept the 10 newest update logs, removed $(printf '%s\n' "$OLD_LOGS" | wc -l | tr -d ' ')"
+        CLEANED=$((CLEANED + 1))
+    fi
+fi
+
+if [ "$CLEANED" -eq 0 ]; then
+    ui_ok "Nothing to clean up"
+fi
+
+# ============================================
+# Complete
+# ============================================
+ui_done "Update complete"
 
 if [ -n "$BACKUP_FILE" ]; then
     ui_kv "Backup" "$BACKUP_FILE"
@@ -663,6 +707,7 @@ if [ -n "$FREE_KB" ]; then
     ui_kv "Disk" "$((FREE_KB / 1024))MB free for Docker"
 fi
 ui_kv "Web interface" "https://$WEB_SUBDOMAIN.$DOMAIN"
+ui_kv "Log" "$UI_LOG"
 echo ""
 ui_text "Useful commands:"
 ui_cmd "docker compose logs -f       # all logs"
