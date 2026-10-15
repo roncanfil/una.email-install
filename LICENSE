@@ -17,8 +17,11 @@ and updates delivered with them.
 install id and serving one host name.
 
 "License Key" means a key issued by the Licensor at https://license.una.email
-that names the licensee, the host and an expiry date, and is signed by the
-Licensor.
+that names the licensee and the host, and is signed by the Licensor.
+
+"Licensed Period" means the period you have paid for, as recorded by the
+Licensor. It starts when you buy a License Key and is extended by each paid
+renewal.
 
 2. GRANT
 
@@ -28,7 +31,10 @@ charge, for ninety (90) days from the day it is installed, to evaluate it.
 2.2 Paid license. Subject to payment of the applicable fee and to this
 agreement, the Licensor grants you a non-exclusive, non-transferable,
 non-sublicensable license to run one Install of the Software, on the host
-named in your License Key, until the expiry date in that key.
+named in your License Key, for the Licensed Period. A renewal extends the
+Licensed Period; your License Key stays the same. If you choose automatic
+renewal when you buy, the license renews and is charged each year until you
+cancel it, and then runs to the end of the period already paid for.
 
 2.3 Everything else is reserved. No right is granted except those expressly
 stated in this agreement.
@@ -74,16 +80,21 @@ section 3 apply to the Licensor's own code and to the Software as a whole.
 
 6. LICENSE VERIFICATION
 
-The Software contacts https://license.una.email when it starts and about once
-a day to confirm its evaluation period or License Key. Each check sends the
+The Software contacts https://license.una.email when an Install first starts,
+when a License Key is added or removed, when the Install's mail domain
+changes, about one month after each payment, when an evaluation period or
+Licensed Period is due to end or renew, when an administrator asks it to,
+and, while a renewal payment has failed or a license has ended, at most once
+a day. It does not contact it at other times. Each check sends the
 Install's id, its mail domain, its License Key if one is installed, and, as
 part of any network request, the server's IP address. No mail, message
 content, user names or addresses of your users are sent. The Licensor uses
 this information only to operate licensing, prevent misuse of the evaluation
 period and enforce this agreement. The Software needs outbound HTTPS access to
-license.una.email to operate; if it cannot confirm its license for fourteen
-(14) days, it restricts itself as it does when a license expires. Blocking,
-spoofing or interfering with this check is a breach of section 3(g).
+license.una.email at those times; if it cannot confirm its license within
+fourteen (14) days after a check falls due, it restricts itself as it does
+when a license expires. Blocking, spoofing or interfering with this check is
+a breach of section 3(g).
 
 7. UPDATES AND SUPPORT
 
@@ -95,7 +106,7 @@ provide updates or support.
 
 This agreement lasts for as long as you use the Software. It ends
 automatically, without notice, if you breach it. When it ends, or when your
-evaluation period or License Key expires without renewal, your right to use
+evaluation period or Licensed Period ends without renewal, your right to use
 the Software as licensed ends. You may keep reading and exporting mail you
 already have, to the extent the Software allows.
 
