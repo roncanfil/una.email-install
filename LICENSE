@@ -82,10 +82,10 @@ section 3 apply to the Licensor's own code and to the Software as a whole.
 
 The Software contacts https://license.una.email when an Install first starts,
 when a License Key is added or removed, when the Install's mail domain
-changes, about one month after each payment, when an evaluation period or
-Licensed Period is due to end or renew, when an administrator asks it to,
-and, while a renewal payment has failed or a license has ended, at most once
-a day. It does not contact it at other times. Each check sends the
+changes, about one month after each renewal payment, when an evaluation
+period or Licensed Period is due to end or renew, when an administrator asks
+it to, and, while a renewal payment has failed or a license has ended, at
+most once a day. It does not contact it at other times. Each check sends the
 Install's id, its mail domain, its License Key if one is installed, and, as
 part of any network request, the server's IP address. No mail, message
 content, user names or addresses of your users are sent. The Licensor uses
